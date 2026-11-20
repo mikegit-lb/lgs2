@@ -32,6 +32,8 @@ import {
   createShootoutState,
   applyQuestionOutcome,
   setCurve,
+  movePlayerKeeper,
+  diveKeeper,
   moveAim,
   stepKeeper,
   launchPass,
@@ -664,12 +666,13 @@ function spawnGoalConfetti() {
 function formatPlayType(playType) {
   if (playType === 'freekick') return '🌀 Free Kick (3-Man Wall)';
   if (playType === 'pass_play') return '🎯 Through-Ball Pass';
+  if (playType === 'gk_save') return '🧤 Defend as Goalkeeper!';
   return '⚽ Penalty Kick';
 }
 
 function startArcadeMatch() {
-  arcadeQuestions = pickArcadeQuestions(6);
-  arcadeState = createShootoutState(6);
+  arcadeQuestions = pickArcadeQuestions(8);
+  arcadeState = createShootoutState(8);
   confetti = [];
   renderArcadeUI();
   showView('pitch');
@@ -740,27 +743,44 @@ function renderArcadeUI() {
     curveBar.classList.remove('hidden');
     renderCurveButtons();
     resBar.classList.add('hidden');
+  } else if (arcadeState.phase === 'gk_incoming') {
+    $('arcade-status-text').textContent = arcadeState.superShot
+      ? '🧤 EAGLE-EYE GLOVES! Slide & Click/Space to DIVE and save!'
+      : '🧤 DEFEND THE GOAL! Slide fast & Click/Space to DIVE!';
+    $('arcade-hint-line').innerHTML = 'YOU are the <strong>Goalkeeper</strong>! Move with <strong>Mouse / Touch / Arrows</strong> • <strong>Click / Space</strong> to DIVE!';
+    qBox.classList.add('hidden');
+    hintBar.classList.remove('hidden');
+    curveBar.classList.add('hidden');
+    resBar.classList.add('hidden');
   } else if (arcadeState.phase === 'result') {
     qBox.classList.add('hidden');
     hintBar.classList.add('hidden');
     curveBar.classList.add('hidden');
     resBar.classList.remove('hidden', 'is-correct', 'is-wrong');
-    const isGoal = arcadeState.lastOutcome === 'goal';
-    resBar.classList.add(isGoal ? 'is-correct' : 'is-wrong');
-    $('arcade-result-title').textContent = isGoal
+    const isPositive = arcadeState.lastOutcome === 'goal' || arcadeState.lastOutcome === 'gk_saved';
+    resBar.classList.add(isPositive ? 'is-correct' : 'is-wrong');
+    $('arcade-result-title').textContent = arcadeState.lastOutcome === 'goal'
       ? 'GOOOAL! Unstoppable finish!'
-      : arcadeState.lastOutcome === 'intercepted'
-        ? 'INTERCEPTED! The defender cut off your pass!'
-        : arcadeState.lastOutcome === 'blocked'
-          ? 'BLOCKED by the Defender Wall!'
-          : arcadeState.lastOutcome === 'saved'
-            ? 'SAVED by the Goalkeeper!'
-            : 'WIDE / OVER THE BAR!';
-    $('arcade-result-desc').textContent = isGoal
+      : arcadeState.lastOutcome === 'gk_saved'
+        ? '🧤 WORLD-CLASS SAVE! You denied Rival FC!'
+        : arcadeState.lastOutcome === 'conceded'
+          ? '⚽ RIVAL GOAL! The striker beat your dive!'
+          : arcadeState.lastOutcome === 'intercepted'
+            ? 'INTERCEPTED! The defender cut off your pass!'
+            : arcadeState.lastOutcome === 'blocked'
+              ? 'BLOCKED by the Defender Wall!'
+              : arcadeState.lastOutcome === 'saved'
+                ? 'SAVED by the Goalkeeper!'
+                : 'WIDE / OVER THE BAR!';
+    $('arcade-result-desc').textContent = arcadeState.lastOutcome === 'goal'
       ? '+35 XP earned! Ready for the next play?'
-      : arcadeState.superShot && arcadeState.round % 2 !== 0
-        ? 'Your English answer protected you from a Rival counter-goal.'
-        : 'Rival FC scored on the counter-attack!';
+      : arcadeState.lastOutcome === 'gk_saved'
+        ? '+40 XP earned for that fingertip save!'
+        : arcadeState.lastOutcome === 'conceded'
+          ? 'Rival FC scored! Time to strike back.'
+          : arcadeState.superShot && arcadeState.round % 2 !== 0
+            ? 'Your English answer protected you from a Rival counter-goal.'
+            : 'Rival FC scored on the counter-attack!';
     $('btn-arcade-next').textContent =
       arcadeState.round >= arcadeState.totalRounds ? 'See Final Score (Enter)' : 'Next Play (Enter)';
   } else if (arcadeState.phase === 'finished') {
@@ -810,73 +830,232 @@ function handleArcadeAdvance() {
   renderArcadeUI();
 }
 
+function drawPlayerSprite(ctx, x, y, jerseyColor, shortsColor, number, stridePhase = 0) {
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 8, 15, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const legOffset = Math.sin(stridePhase) * 4;
+  // Legs & boots
+  ctx.strokeStyle = '#fde68a';
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y - 4);
+  ctx.lineTo(x - 6, y + 6 + legOffset);
+  ctx.moveTo(x + 5, y - 4);
+  ctx.lineTo(x + 6, y + 6 - legOffset);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(x - 9, y + 4 + legOffset, 6, 4);
+  ctx.fillRect(x + 3, y + 4 - legOffset, 6, 4);
+
+  // Shorts
+  ctx.fillStyle = shortsColor;
+  ctx.fillRect(x - 11, y - 10, 22, 8);
+
+  // Jersey torso
+  ctx.fillStyle = jerseyColor;
+  ctx.beginPath();
+  ctx.roundRect(x - 13, y - 28, 26, 20, 5);
+  ctx.fill();
+
+  // Arms
+  ctx.strokeStyle = jerseyColor;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(x - 13, y - 24);
+  ctx.lineTo(x - 18, y - 14 - legOffset * 0.5);
+  ctx.moveTo(x + 13, y - 24);
+  ctx.lineTo(x + 18, y - 14 + legOffset * 0.5);
+  ctx.stroke();
+
+  // Head & hair
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath();
+  ctx.arc(x, y - 36, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.arc(x, y - 39, 9, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  // Jersey number
+  if (number) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(number), x, y - 14);
+  }
+}
+
+function drawGoalkeeperSprite(ctx, x, y, width, diveDir, isPlayerControlled) {
+  ctx.save();
+  ctx.translate(x, y - 14);
+  if (diveDir !== 0) {
+    ctx.rotate(diveDir * 0.85);
+  }
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 18, width * 0.45, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Torso
+  ctx.fillStyle = isPlayerControlled ? '#10b981' : '#f59e0b';
+  ctx.beginPath();
+  ctx.roundRect(-16, -14, 32, 24, 6);
+  ctx.fill();
+
+  // Outstretched arms
+  const span = diveDir !== 0 ? width * 0.68 : width * 0.48;
+  ctx.strokeStyle = isPlayerControlled ? '#059669' : '#d97706';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-14, -6);
+  ctx.lineTo(-span, -12);
+  ctx.moveTo(14, -6);
+  ctx.lineTo(span, -12);
+  ctx.stroke();
+
+  // Bright keeper gloves
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(-span, -12, 8, 0, Math.PI * 2);
+  ctx.arc(span, -12, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath();
+  ctx.arc(0, -24, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(0, -27, 10, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function drawPitch() {
   const canvas = $('pitch-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Stadium stands & floodlights top strip
+  const t = arcadeState.animTime || 0;
+
+  // Stadium stands & animated crowd
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(0, 0, PITCH_WIDTH, GOAL_LINE_Y);
-  const crowdColors = ['#ef4444', '#facc15', '#38bdf8', '#4ade80', '#f472b6'];
+  const crowdColors = ['#ef4444', '#facc15', '#38bdf8', '#4ade80', '#f472b6', '#ffffff'];
   for (let row = 0; row < 3; row += 1) {
-    for (let cx = 14; cx < PITCH_WIDTH; cx += 22) {
+    for (let cx = 14; cx < PITCH_WIDTH; cx += 20) {
+      const cheerBounce = arcadeState.lastOutcome === 'goal' || arcadeState.lastOutcome === 'gk_saved'
+        ? Math.sin(t * 14 + cx) * 3
+        : 0;
       ctx.fillStyle = crowdColors[(cx + row * 7) % crowdColors.length];
       ctx.beginPath();
-      ctx.arc(cx, 12 + row * 12, 4.5, 0, Math.PI * 2);
+      ctx.arc(cx, 12 + row * 12 + cheerBounce, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
-  // Floodlight glow
-  const glow = ctx.createRadialGradient(PENALTY_X, 0, 20, PENALTY_X, 80, 320);
-  glow.addColorStop(0, 'rgba(254, 240, 138, 0.22)');
-  glow.addColorStop(1, 'rgba(15, 23, 42, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, PITCH_WIDTH, PITCH_HEIGHT);
 
-  // Grass stripes from goal line down
-  const turfTop = GOAL_LINE_Y;
-  const stripeH = (PITCH_HEIGHT - turfTop) / 6;
-  for (let i = 0; i < 6; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? '#16a34a' : '#15803d';
-    ctx.fillRect(0, turfTop + i * stripeH, PITCH_WIDTH, stripeH);
+  // Stadium LED ad board
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, GOAL_LINE_Y - 18, PITCH_WIDTH, 18);
+  ctx.fillStyle = '#facc15';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('LGS CHAMPIONS CUP 2026   •   ANATOLIA UNITED   •   FAIR PLAY   •   MATCHDAY LIVE', PENALTY_X, GOAL_LINE_Y - 6);
+
+  // Dual stadium floodlight beams
+  for (const fx of [110, 530]) {
+    const beam = ctx.createRadialGradient(fx, 0, 10, fx, 140, 290);
+    beam.addColorStop(0, 'rgba(254, 249, 195, 0.24)');
+    beam.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = beam;
+    ctx.fillRect(0, 0, PITCH_WIDTH, PITCH_HEIGHT);
   }
 
-  // Penalty box lines & D-arc
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.82)';
+  // Perspective mowed grass stripes
+  const turfTop = GOAL_LINE_Y;
+  const stripeH = (PITCH_HEIGHT - turfTop) / 7;
+  for (let i = 0; i < 7; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#16a34a' : '#15803d';
+    ctx.fillRect(0, turfTop + i * stripeH, PITCH_WIDTH, stripeH + 1);
+  }
+
+  // Perspective Penalty Box & Goal Area
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
   ctx.lineWidth = 3;
-  ctx.strokeRect(80, GOAL_LINE_Y, 480, 224);
-  ctx.strokeRect(200, GOAL_LINE_Y, 240, 88);
   ctx.beginPath();
-  ctx.arc(PENALTY_X, PENALTY_Y - 12, 48, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.moveTo(0, GOAL_LINE_Y);
+  ctx.lineTo(PITCH_WIDTH, GOAL_LINE_Y);
   ctx.stroke();
 
-  // Penalty spot
-  ctx.fillStyle = '#fff';
+  // Outer 18-yard box (trapezoid perspective)
+  ctx.beginPath();
+  ctx.moveTo(95, GOAL_LINE_Y);
+  ctx.lineTo(52, 345);
+  ctx.lineTo(588, 345);
+  ctx.lineTo(545, GOAL_LINE_Y);
+  ctx.stroke();
+
+  // Inner 6-yard box
+  ctx.beginPath();
+  ctx.moveTo(195, GOAL_LINE_Y);
+  ctx.lineTo(182, 206);
+  ctx.lineTo(458, 206);
+  ctx.lineTo(445, GOAL_LINE_Y);
+  ctx.stroke();
+
+  // Penalty D-arc & spot
+  ctx.beginPath();
+  ctx.arc(PENALTY_X, PENALTY_Y - 6, 52, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.arc(PENALTY_X, PENALTY_Y, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Goal net mesh & posts
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
-  ctx.fillRect(GOAL_LEFT, GOAL_TOP, GOAL_RIGHT - GOAL_LEFT, GOAL_LINE_Y - GOAL_TOP);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  // 3D Goal frame & animated net ripple
+  const ripple = Math.sin(t * 28) * (arcadeState.netRipple || 0) * 6;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.beginPath();
+  ctx.moveTo(GOAL_LEFT, GOAL_LINE_Y);
+  ctx.lineTo(GOAL_LEFT + 14, GOAL_TOP + 8);
+  ctx.lineTo(GOAL_RIGHT - 14, GOAL_TOP + 8);
+  ctx.lineTo(GOAL_RIGHT, GOAL_LINE_Y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
   ctx.lineWidth = 1;
-  for (let nx = GOAL_LEFT + 18; nx < GOAL_RIGHT; nx += 18) {
+  for (let nx = GOAL_LEFT + 16; nx < GOAL_RIGHT; nx += 16) {
     ctx.beginPath();
     ctx.moveTo(nx, GOAL_TOP);
-    ctx.lineTo(nx, GOAL_LINE_Y);
+    ctx.lineTo(nx + ripple, GOAL_LINE_Y);
     ctx.stroke();
   }
-  for (let ny = GOAL_TOP + 16; ny < GOAL_LINE_Y; ny += 16) {
+  for (let ny = GOAL_TOP + 14; ny < GOAL_LINE_Y; ny += 14) {
     ctx.beginPath();
     ctx.moveTo(GOAL_LEFT, ny);
-    ctx.lineTo(GOAL_RIGHT, ny);
+    ctx.lineTo(GOAL_RIGHT, ny + ripple * 0.4);
     ctx.stroke();
   }
+
+  // Goal posts & crossbar
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(GOAL_LEFT, GOAL_LINE_Y);
   ctx.lineTo(GOAL_LEFT, GOAL_TOP);
@@ -884,40 +1063,32 @@ function drawPitch() {
   ctx.lineTo(GOAL_RIGHT, GOAL_LINE_Y);
   ctx.stroke();
 
-  // Goalkeeper (gold/black kit)
-  const kx = arcadeState.keeperX;
-  const ky = GOAL_LINE_Y - 8;
-  ctx.fillStyle = '#f59e0b';
-  ctx.fillRect(kx - arcadeState.keeperWidth / 2, ky - 26, arcadeState.keeperWidth, 24);
-  ctx.fillStyle = '#1e293b';
-  ctx.fillRect(kx - 14, ky - 4, 28, 6);
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath();
-  ctx.arc(kx, ky - 36, 11, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(kx - arcadeState.keeperWidth / 2 - 4, ky - 16, 7.5, 0, Math.PI * 2);
-  ctx.arc(kx + arcadeState.keeperWidth / 2 + 4, ky - 16, 7.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Moving Defenders (3-man freekick wall or 2 midfielders)
-  for (const def of arcadeState.defenders) {
-    const dx = def.x;
-    const dy = def.y;
-    ctx.fillStyle = '#dc2626';
-    ctx.fillRect(dx - def.width / 2, dy - 26, def.width, 24);
-    ctx.fillStyle = '#991b1b';
-    ctx.fillRect(dx - 11, dy - 2, 22, 8);
-    ctx.fillStyle = '#fde68a';
+  // Eagle-Eye hint flash during GK defense if player answered LGS question correctly
+  if (arcadeState.phase === 'gk_incoming' && arcadeState.superShot && !arcadeState.gkShotFired) {
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(dx, dy - 35, 9.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('DEF', dx, dy - 10);
+    ctx.arc(arcadeState.targetX, arcadeState.targetY, 20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
+
+  // Goalkeeper (player controls during gk_save!)
+  const isPlayerGk = arcadeState.playType === 'gk_save';
+  drawGoalkeeperSprite(
+    ctx,
+    arcadeState.keeperX,
+    GOAL_LINE_Y - 2,
+    arcadeState.keeperWidth,
+    arcadeState.keeperDiveDir,
+    isPlayerGk
+  );
+
+  // Moving Defenders (3-man wall or midfielders)
+  arcadeState.defenders.forEach((def, idx) => {
+    drawPlayerSprite(ctx, def.x, def.y, '#dc2626', '#7f1d1d', 4 + idx, t * 8 + idx);
+  });
 
   // Teammate striker during pass_play
   if (arcadeState.teammateX !== null && (arcadeState.phase === 'pass' || arcadeState.phase === 'passing')) {
@@ -930,26 +1101,16 @@ function drawPitch() {
     ctx.arc(mx, my - 10, 26, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-
-    ctx.fillStyle = '#0284c7';
-    ctx.fillRect(mx - 14, my - 22, 28, 22);
-    ctx.fillStyle = '#fde68a';
-    ctx.beginPath();
-    ctx.arc(mx, my - 31, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('PASS', mx, my - 7);
+    drawPlayerSprite(ctx, mx, my, '#0284c7', '#0f172a', 9, t * 10);
   }
 
-  // Striker / Kicker at ball start position
-  ctx.fillStyle = '#0284c7';
-  ctx.fillRect(arcadeState.startX - 14, arcadeState.startY + 14, 28, 22);
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath();
-  ctx.arc(arcadeState.startX, arcadeState.startY + 6, 9, 0, Math.PI * 2);
-  ctx.fill();
+  // Kicker (Blue Anatolia striker on attack, Red Rival striker running up on GK defense!)
+  if (isPlayerGk) {
+    const runupY = PENALTY_Y + 20 + (arcadeState.gkRunup || 0) * 45;
+    drawPlayerSprite(ctx, PENALTY_X, runupY, '#dc2626', '#7f1d1d', 10, t * 12);
+  } else {
+    drawPlayerSprite(ctx, arcadeState.startX, arcadeState.startY + 26, '#0284c7', '#0f172a', 10, t * 4);
+  }
 
   // Dotted curved flight preview during 'aim' or 'pass'
   if (arcadeState.phase === 'aim' || arcadeState.phase === 'pass') {
@@ -975,7 +1136,7 @@ function drawPitch() {
 
   // Power Meter during 'aim' phase
   if (arcadeState.phase === 'aim') {
-    const barX = 576;
+    const barX = 580;
     const barY = 175;
     const barW = 24;
     const barH = 150;
@@ -998,9 +1159,13 @@ function drawPitch() {
     ctx.fillRect(barX - 4, markerY - 3, barW + 8, 6);
   }
 
-  // Smooth curved ball trail
+  // Curved ball trail
   if (arcadeState.ballTrail && arcadeState.ballTrail.length > 1) {
-    ctx.strokeStyle = arcadeState.superShot ? 'rgba(250, 204, 21, 0.6)' : 'rgba(255, 255, 255, 0.4)';
+    ctx.strokeStyle = isPlayerGk
+      ? 'rgba(248, 113, 113, 0.55)'
+      : arcadeState.superShot
+        ? 'rgba(250, 204, 21, 0.6)'
+        : 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 7;
     ctx.beginPath();
     ctx.moveTo(arcadeState.ballTrail[0].x, arcadeState.ballTrail[0].y);
@@ -1010,13 +1175,22 @@ function drawPitch() {
     ctx.stroke();
   }
 
-  // Spinning Soccer Ball
-  const ballScale = arcadeState.phase === 'flying'
-    ? Math.max(0.62, 1 - (PENALTY_Y - arcadeState.ballY) / 360)
-    : 1;
-  const r = 13 * ballScale;
+  // Lifelike 3D ball with ground shadow & arc elevation
+  const inAir = arcadeState.phase === 'flying' || (arcadeState.phase === 'gk_incoming' && arcadeState.gkShotFired);
+  const progress = inAir ? Math.max(0, Math.min(1, (PENALTY_Y - arcadeState.ballY) / (PENALTY_Y - GOAL_LINE_Y))) : 0;
+  const arcLift = inAir ? Math.sin(progress * Math.PI) * 24 : 0;
+  const ballScale = inAir ? Math.max(0.62, 1 - progress * 0.36) : 1;
+  const r = 12.5 * ballScale;
+
+  // Ground shadow below ball
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(arcadeState.ballX, arcadeState.ballY + 8, r * 0.9, r * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Spinning ball body
   ctx.save();
-  ctx.translate(arcadeState.ballX, arcadeState.ballY);
+  ctx.translate(arcadeState.ballX, arcadeState.ballY - arcLift);
   ctx.rotate(arcadeState.ballSpin || 0);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
@@ -1025,10 +1199,17 @@ function drawPitch() {
   ctx.strokeStyle = '#0f172a';
   ctx.lineWidth = 2;
   ctx.stroke();
+  // Classic pentagon patches
   ctx.fillStyle = '#0f172a';
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
   ctx.fill();
+  for (let a = 0; a < 5; a += 1) {
+    const ang = (a * Math.PI * 2) / 5;
+    ctx.beginPath();
+    ctx.arc(Math.cos(ang) * r * 0.72, Math.sin(ang) * r * 0.72, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 
   // Confetti
@@ -1047,9 +1228,10 @@ function arcadeLoop(now) {
   arcadeState = stepKeeper(arcadeState, dt);
   arcadeState = stepBall(arcadeState, dt);
 
-  if ((prevPhase === 'flying' || prevPhase === 'passing') && arcadeState.phase === 'result') {
-    if (arcadeState.lastOutcome === 'goal') {
-      state = { ...state, totalXp: state.totalXp + 35 };
+  if ((prevPhase === 'flying' || prevPhase === 'passing' || prevPhase === 'gk_incoming') && arcadeState.phase === 'result') {
+    if (arcadeState.lastOutcome === 'goal' || arcadeState.lastOutcome === 'gk_saved') {
+      const bonus = arcadeState.lastOutcome === 'gk_saved' ? 40 : 35;
+      state = { ...state, totalXp: state.totalXp + bonus };
       saveProgress(window.localStorage, state);
       renderHud();
       spawnGoalConfetti();
@@ -1277,8 +1459,23 @@ if (pitchCanvas) {
     };
   };
 
-  pitchCanvas.addEventListener('pointermove', (e) => updateAimFromPointer(e.clientX, e.clientY));
+  pitchCanvas.addEventListener('pointermove', (e) => {
+    if (arcadeState.phase === 'gk_incoming') {
+      const rect = pitchCanvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * PITCH_WIDTH;
+      arcadeState = movePlayerKeeper(arcadeState, x);
+      return;
+    }
+    updateAimFromPointer(e.clientX, e.clientY);
+  });
   pitchCanvas.addEventListener('pointerdown', (e) => {
+    if (arcadeState.phase === 'gk_incoming') {
+      const rect = pitchCanvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * PITCH_WIDTH;
+      const dir = x < arcadeState.keeperX - 10 ? -1 : x > arcadeState.keeperX + 10 ? 1 : 0;
+      arcadeState = diveKeeper(arcadeState, dir);
+      return;
+    }
     if (arcadeState.phase === 'pass') {
       updateAimFromPointer(e.clientX, e.clientY);
       arcadeState = launchPass(arcadeState);
@@ -1348,6 +1545,18 @@ document.addEventListener('keydown', (event) => {
   } else if (activeView === 'pitch') {
     if (arcadeState.phase === 'question' && ['1', '2', '3', '4'].includes(event.key)) {
       handleArcadeAnswer(Number(event.key) - 1);
+    } else if (arcadeState.phase === 'gk_incoming') {
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') {
+        event.preventDefault();
+        arcadeState = movePlayerKeeper(arcadeState, arcadeState.keeperX - 28);
+      } else if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') {
+        event.preventDefault();
+        arcadeState = movePlayerKeeper(arcadeState, arcadeState.keeperX + 28);
+      } else if (event.key === ' ') {
+        event.preventDefault();
+        const dir = arcadeState.ballX < arcadeState.keeperX ? -1 : 1;
+        arcadeState = diveKeeper(arcadeState, dir);
+      }
     } else if (arcadeState.phase === 'pass' || arcadeState.phase === 'aim') {
       if (event.key === 'ArrowLeft') { event.preventDefault(); arcadeState = moveAim(arcadeState, -22, 0); }
       else if (event.key === 'ArrowRight') { event.preventDefault(); arcadeState = moveAim(arcadeState, 22, 0); }

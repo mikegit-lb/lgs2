@@ -1,6 +1,7 @@
 /**
  * Realistic 2D Football Match Engine for LGS Champions Cup.
- * Supports: Penalty Kicks, Free Kicks (3-man wall + ball curve), and Through-Ball Pass Plays.
+ * Supports: Penalty Kicks, Free Kicks (3-man wall + curve), Through-Ball Pass Plays,
+ * and Goalkeeper Defense (diving saves against Rival FC strikers).
  * Coordinate space: 640x380 canvas.
  */
 
@@ -14,14 +15,15 @@ export const PENALTY_X = 320;
 export const PENALTY_Y = 315;
 
 export function getPlayTypeForRound(round) {
-  const mod = ((round - 1) % 3);
+  const mod = (round - 1) % 4;
   if (mod === 0) return 'penalty';
   if (mod === 1) return 'freekick';
-  return 'pass_play';
+  if (mod === 2) return 'pass_play';
+  return 'gk_save';
 }
 
 function buildScenario(playType, round, isCorrect) {
-  const roundBonus = (round - 1) * 18;
+  const roundBonus = (round - 1) * 16;
   const keeperSpeed = (isCorrect ? 210 : 330) + roundBonus;
   const baseDefSpeed = (isCorrect ? 130 : 210) + roundBonus * 0.6;
 
@@ -41,7 +43,10 @@ function buildScenario(playType, round, isCorrect) {
         { x: wallCenter - 34, y: 215, width: 32, dir: 1, speed: isCorrect ? 18 : 34 },
         { x: wallCenter, y: 215, width: 32, dir: 1, speed: isCorrect ? 18 : 34 },
         { x: wallCenter + 34, y: 215, width: 32, dir: 1, speed: isCorrect ? 18 : 34 }
-      ]
+      ],
+      rivalTargetX: PENALTY_X,
+      rivalTargetY: 82,
+      gkRunup: 0
     };
   }
 
@@ -58,7 +63,31 @@ function buildScenario(playType, round, isCorrect) {
       defenders: [
         { x: 240, y: 280, width: 40, dir: 1, speed: baseDefSpeed },
         { x: 400, y: 250, width: 40, dir: -1, speed: baseDefSpeed * 0.9 }
-      ]
+      ],
+      rivalTargetX: PENALTY_X,
+      rivalTargetY: 82,
+      gkRunup: 0
+    };
+  }
+
+  if (playType === 'gk_save') {
+    // Rival striker picks a corner to shoot toward
+    const corners = [185, 235, 405, 455];
+    const targetX = corners[(round * 3 + (isCorrect ? 0 : 1)) % corners.length];
+    const targetY = 66 + ((round * 13) % 36);
+    return {
+      phase: 'gk_incoming',
+      startX: PENALTY_X,
+      startY: PENALTY_Y,
+      keeperSpeed: 0,
+      keeperX: PENALTY_X,
+      teammateX: null,
+      teammateY: null,
+      teammateDir: 1,
+      defenders: [],
+      rivalTargetX: targetX,
+      rivalTargetY: targetY,
+      gkRunup: isCorrect ? 0.85 : 0.52
     };
   }
 
@@ -72,16 +101,19 @@ function buildScenario(playType, round, isCorrect) {
     teammateX: null,
     teammateY: null,
     teammateDir: 1,
-    defenders: []
+    defenders: [],
+    rivalTargetX: PENALTY_X,
+    rivalTargetY: 82,
+    gkRunup: 0
   };
 }
 
-export function createShootoutState(totalRounds = 6) {
+export function createShootoutState(totalRounds = 8) {
   return {
     round: 1,
     totalRounds,
     playType: getPlayTypeForRound(1),
-    phase: 'question', // 'question' | 'pass' | 'passing' | 'aim' | 'flying' | 'result' | 'finished'
+    phase: 'question', // 'question' | 'pass' | 'passing' | 'aim' | 'flying' | 'gk_incoming' | 'result' | 'finished'
     playerScore: 0,
     rivalScore: 0,
     superShot: false,
@@ -89,7 +121,7 @@ export function createShootoutState(totalRounds = 6) {
     startY: PENALTY_Y,
     aimX: PENALTY_X,
     aimY: 82,
-    curve: 0, // -1 (curl left) to +1 (curl right)
+    curve: 0,
     power: 0.65,
     powerDir: 1,
     powerSpeed: 1.35,
@@ -97,6 +129,10 @@ export function createShootoutState(totalRounds = 6) {
     keeperDir: 1,
     keeperSpeed: 240,
     keeperWidth: 66,
+    keeperDiveDir: 0, // -1 left, 0 neutral, 1 right
+    keeperDiveTimer: 0,
+    gkRunup: 0,
+    gkShotFired: false,
     defenders: [],
     teammateX: null,
     teammateY: null,
@@ -109,7 +145,9 @@ export function createShootoutState(totalRounds = 6) {
     ballVy: 0,
     ballSpin: 0,
     ballTrail: [],
-    lastOutcome: null // 'goal' | 'saved' | 'blocked' | 'intercepted' | 'miss'
+    netRipple: 0,
+    animTime: 0,
+    lastOutcome: null // 'goal' | 'saved' | 'blocked' | 'intercepted' | 'miss' | 'gk_saved' | 'conceded'
   };
 }
 
@@ -127,8 +165,14 @@ export function applyQuestionOutcome(state, isCorrect) {
     startY: scenario.startY,
     ballX: scenario.startX,
     ballY: scenario.startY,
+    targetX: scenario.rivalTargetX,
+    targetY: scenario.rivalTargetY,
     keeperX: scenario.keeperX,
     keeperSpeed: scenario.keeperSpeed,
+    keeperDiveDir: 0,
+    keeperDiveTimer: 0,
+    gkRunup: scenario.gkRunup,
+    gkShotFired: false,
     defenders: scenario.defenders,
     teammateX: scenario.teammateX,
     teammateY: scenario.teammateY,
@@ -136,7 +180,10 @@ export function applyQuestionOutcome(state, isCorrect) {
     curve: 0,
     power: 0.55,
     powerDir: 1,
+    ballVx: 0,
+    ballVy: 0,
     ballTrail: [],
+    netRipple: 0,
     lastOutcome: null
   };
 }
@@ -144,6 +191,27 @@ export function applyQuestionOutcome(state, isCorrect) {
 export function setCurve(state, value) {
   const clamped = Math.max(-1, Math.min(1, Number(value) || 0));
   return { ...state, curve: Math.round(clamped * 10) / 10 };
+}
+
+export function movePlayerKeeper(state, targetX) {
+  if (state.phase !== 'gk_incoming') return state;
+  const halfK = state.keeperWidth / 2;
+  const clamped = Math.max(GOAL_LEFT + halfK + 2, Math.min(GOAL_RIGHT - halfK - 2, targetX));
+  return { ...state, keeperX: clamped };
+}
+
+export function diveKeeper(state, dir = 0) {
+  if (state.phase !== 'gk_incoming' || state.keeperDiveTimer > 0) return state;
+  const d = dir < 0 ? -1 : dir > 0 ? 1 : 0;
+  const lunge = d * 36;
+  const halfK = state.keeperWidth / 2;
+  const nextX = Math.max(GOAL_LEFT + halfK, Math.min(GOAL_RIGHT - halfK, state.keeperX + lunge));
+  return {
+    ...state,
+    keeperX: nextX,
+    keeperDiveDir: d === 0 ? 1 : d,
+    keeperDiveTimer: 0.55
+  };
 }
 
 export function moveAim(state, dx, dy) {
@@ -156,9 +224,25 @@ export function moveAim(state, dx, dy) {
 }
 
 export function stepKeeper(state, dt) {
-  if (!['pass', 'passing', 'aim', 'flying'].includes(state.phase)) return state;
+  const nextAnim = state.animTime + dt;
+  const nextRipple = Math.max(0, state.netRipple - dt * 2.5);
 
-  // Move goalkeeper
+  if (state.phase === 'gk_incoming') {
+    const nextDiveTimer = Math.max(0, state.keeperDiveTimer - dt);
+    return {
+      ...state,
+      animTime: nextAnim,
+      netRipple: nextRipple,
+      keeperDiveTimer: nextDiveTimer,
+      keeperDiveDir: nextDiveTimer > 0 ? state.keeperDiveDir : 0
+    };
+  }
+
+  if (!['pass', 'passing', 'aim', 'flying'].includes(state.phase)) {
+    return { ...state, animTime: nextAnim, netRipple: nextRipple };
+  }
+
+  // AI goalkeeper movement
   const halfK = state.keeperWidth / 2;
   const minK = GOAL_LEFT + halfK + 4;
   const maxK = GOAL_RIGHT - halfK - 4;
@@ -220,6 +304,8 @@ export function stepKeeper(state, dt) {
 
   return {
     ...state,
+    animTime: nextAnim,
+    netRipple: nextRipple,
     keeperX: nextKeeperX,
     keeperDir: nextKeeperDir,
     defenders: nextDefenders,
@@ -268,8 +354,6 @@ export function launchShot(state, targetX = state.aimX, targetY = state.aimY) {
   const baseSpeed = state.superShot ? 640 : 490;
   const powerFactor = state.power < 0.35 ? 0.65 : state.power > 0.86 ? 1.15 : 1.0;
   const speed = baseSpeed * powerFactor;
-
-  // Offset initial horizontal velocity slightly opposite to curve so the ball bends toward target
   const curveLead = -state.curve * 115;
 
   return {
@@ -287,6 +371,58 @@ export function launchShot(state, targetX = state.aimX, targetY = state.aimY) {
 }
 
 export function stepBall(state, dt) {
+  // Handle Rival FC shot during Goalkeeper Defense round
+  if (state.phase === 'gk_incoming') {
+    if (!state.gkShotFired) {
+      const nextRunup = state.gkRunup - dt;
+      if (nextRunup > 0) {
+        return { ...state, gkRunup: nextRunup };
+      }
+      const dx = state.targetX - PENALTY_X;
+      const dy = state.targetY - PENALTY_Y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const speed = state.superShot ? 410 : 540;
+      return {
+        ...state,
+        gkRunup: 0,
+        gkShotFired: true,
+        ballVx: (dx / dist) * speed,
+        ballVy: (dy / dist) * speed,
+        ballTrail: [{ x: state.ballX, y: state.ballY }]
+      };
+    }
+
+    const nextX = state.ballX + state.ballVx * dt;
+    const nextY = state.ballY + state.ballVy * dt;
+    const nextSpin = state.ballSpin + dt * 18;
+    const nextTrail = [...state.ballTrail.slice(-14), { x: nextX, y: nextY }];
+
+    if (nextY <= state.targetY || nextY <= GOAL_LINE_Y - 10) {
+      const diveBonus = state.keeperDiveTimer > 0 ? 28 : 0;
+      const reach = state.keeperWidth / 2 + diveBonus + (state.superShot ? 10 : 0);
+      const saved = Math.abs(nextX - state.keeperX) <= reach;
+      return {
+        ...state,
+        ballX: nextX,
+        ballY: nextY,
+        ballSpin: nextSpin,
+        ballTrail: nextTrail,
+        phase: 'result',
+        netRipple: saved ? 0 : 1,
+        lastOutcome: saved ? 'gk_saved' : 'conceded',
+        rivalScore: saved ? state.rivalScore : state.rivalScore + 1
+      };
+    }
+
+    return {
+      ...state,
+      ballX: nextX,
+      ballY: nextY,
+      ballSpin: nextSpin,
+      ballTrail: nextTrail
+    };
+  }
+
   if (state.phase !== 'flying' && state.phase !== 'passing') return state;
 
   const prevY = state.ballY;
@@ -296,7 +432,6 @@ export function stepBall(state, dt) {
   const nextSpin = state.ballSpin + dt * (14 + Math.abs(state.curve) * 16);
   const nextTrail = [...state.ballTrail.slice(-14), { x: nextX, y: nextY }];
 
-  // Check collisions with all defenders
   for (const def of state.defenders) {
     if (prevY > def.y && nextY <= def.y) {
       const hitDef = Math.abs(nextX - def.x) <= def.width / 2 + 8;
@@ -317,7 +452,6 @@ export function stepBall(state, dt) {
     }
   }
 
-  // Handle through-ball pass arrival
   if (state.phase === 'passing') {
     if (nextY <= state.targetY) {
       const caught = state.teammateX !== null && Math.abs(nextX - state.teammateX) <= 46;
@@ -351,7 +485,6 @@ export function stepBall(state, dt) {
     return { ...state, ballX: nextX, ballY: nextY, ballVx: nextVx, ballSpin: nextSpin, ballTrail: nextTrail };
   }
 
-  // Handle shot reaching goal line
   if (nextY <= state.targetY || nextY <= GOAL_LINE_Y - 12) {
     const insidePosts = nextX > GOAL_LEFT + 10 && nextX < GOAL_RIGHT - 10 && nextY >= GOAL_TOP + 2;
     const halfKeeper = state.keeperWidth / 2 + 6;
@@ -373,6 +506,7 @@ export function stepBall(state, dt) {
       ballSpin: nextSpin,
       ballTrail: nextTrail,
       phase: 'result',
+      netRipple: scored ? 1 : 0,
       lastOutcome: outcome,
       playerScore: scored ? state.playerScore + 1 : state.playerScore,
       rivalScore: rivalScored ? state.rivalScore + 1 : state.rivalScore
@@ -402,6 +536,8 @@ export function advanceShootoutRound(state) {
     ballX: PENALTY_X,
     ballY: PENALTY_Y,
     curve: 0,
+    keeperDiveDir: 0,
+    keeperDiveTimer: 0,
     ballTrail: [],
     lastOutcome: null
   };

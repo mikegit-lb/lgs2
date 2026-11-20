@@ -25,6 +25,8 @@ import {
   createShootoutState,
   applyQuestionOutcome,
   setCurve,
+  movePlayerKeeper,
+  diveKeeper,
   stepKeeper,
   launchPass,
   launchShot,
@@ -183,9 +185,9 @@ test('pitchGame ball scores when aimed away from keeper and advances round', () 
 });
 
 test('pitchGame defender blocks shots in its path and round difficulty scales keeper speed', () => {
-  const r1 = applyQuestionOutcome(createShootoutState(6), true);
-  const r4 = applyQuestionOutcome({ ...createShootoutState(6), round: 4 }, true);
-  assert.ok(r4.keeperSpeed > r1.keeperSpeed);
+  const r1 = applyQuestionOutcome(createShootoutState(8), true);
+  const r5 = applyQuestionOutcome({ ...createShootoutState(8), round: 5 }, true);
+  assert.ok(r5.keeperSpeed > r1.keeperSpeed);
 
   let blocked = {
     ...r1,
@@ -249,4 +251,34 @@ test('FILL_IN_BLANKS, MATCHING_ROUNDS, and checkFillBlank work accurately', () =
       assert.ok(pair.id && pair.left && pair.right);
     }
   }
+});
+
+test('pitchGame goalkeeper defense round lets player dive to save or concede rival shots', () => {
+  let gk = applyQuestionOutcome({ ...createShootoutState(8), round: 4 }, true);
+  assert.equal(gk.playType, 'gk_save');
+  assert.equal(gk.phase, 'gk_incoming');
+
+  // Position player keeper directly in line with rival's target and dive
+  gk = movePlayerKeeper(gk, gk.targetX);
+  gk = diveKeeper(gk, 0);
+  // Advance run-up + shot flight
+  for (let i = 0; i < 160 && gk.phase === 'gk_incoming'; i += 1) {
+    gk = stepKeeper(gk, 0.016);
+    gk = stepBall(gk, 0.016);
+  }
+  assert.equal(gk.phase, 'result');
+  assert.equal(gk.lastOutcome, 'gk_saved');
+  assert.equal(gk.rivalScore, 0);
+
+  // Now move keeper to the opposite post so rival scores
+  let concede = applyQuestionOutcome({ ...createShootoutState(8), round: 4 }, false);
+  const farPost = concede.targetX > 320 ? 175 : 465;
+  concede = movePlayerKeeper(concede, farPost);
+  for (let i = 0; i < 160 && concede.phase === 'gk_incoming'; i += 1) {
+    concede = stepKeeper(concede, 0.016);
+    concede = stepBall(concede, 0.016);
+  }
+  assert.equal(concede.phase, 'result');
+  assert.equal(concede.lastOutcome, 'conceded');
+  assert.equal(concede.rivalScore, 1);
 });
