@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LGS Champions Cup — 90' Football English Quest</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="stadium-shell">
+    <header class="scoreboard" aria-label="Match scoreboard">
+      <div class="scoreboard-brand">
+        <span class="club-crest" aria-hidden="true">⚽</span>
+        <div>
+          <h1 class="club-title">LGS Champions Cup</h1>
+          <p class="club-sub">Anatolia United • 90' English Matchday</p>
+        </div>
+      </div>
+
+      <div class="scoreboard-stats">
+        <div class="stat-chip clock-chip" title="Match Progress">
+          <span>Clock</span>
+          <strong id="hud-clock">00'</strong>
+        </div>
+        <div class="stat-chip" title="Manager Rank">
+          <span>Rank</span>
+          <strong id="hud-rank">Academy Trainee</strong>
+        </div>
+        <div class="stat-chip" title="Total XP">
+          <span>XP</span>
+          <strong id="hud-xp">0</strong>
+        </div>
+        <div class="stat-chip" title="Goal Combo">
+          <span>Combo</span>
+          <strong id="hud-combo">0</strong>
+        </div>
+        <div class="stat-chip stamina-chip" title="Remaining Stamina">
+          <span>Stamina</span>
+          <strong id="hud-stamina">⚡⚡⚡</strong>
+        </div>
+        <button id="btn-sound" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Sound: On</button>
+        <button id="btn-home" class="btn btn-ghost btn-sm hidden" type="button">Locker Room</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- LOCKER ROOM HUB -->
+      <section id="view-hub" class="view">
+        <div class="pitch-banner">
+          <div>
+            <span class="eyebrow">90-Minute Matchday Plan • 54 Challenges</span>
+            <h2>Lead Anatolia United to the LGS Cup!</h2>
+            <p>Start in the Locker Room with Tactical Briefings &amp; Warm-Up Drills (~35 min), then play all 4 Match Quarters (~55 min) to reach 90'.</p>
+          </div>
+          <button id="btn-reset-progress" class="btn btn-ghost btn-sm" type="button">Reset Season</button>
+        </div>
+
+        <h3 class="section-title">1. Locker Room: Tactical Briefings &amp; Warm-Up Drills</h3>
+        <div id="hub-prep" class="card-grid"></div>
+
+        <h3 class="section-title">2. The 90-Minute Match (4 Quarters • 34 LGS Questions)</h3>
+        <div id="hub-stages" class="card-grid two-col"></div>
+      </section>
+
+      <!-- BRIEFING VIEW -->
+      <section id="view-briefing" class="view hidden" aria-live="polite">
+        <div class="panel">
+          <div class="panel-header">
+            <span id="briefing-badge" class="pill pill-gold"></span>
+            <h2 id="briefing-title"></h2>
+          </div>
+
+          <div class="tactic-board">
+            <div><strong>Routine / Rule:</strong> <code id="briefing-simple"></code></div>
+            <div><strong>Live Action:</strong> <code id="briefing-cont"></code></div>
+            <div><strong>Watch Out:</strong> <code id="briefing-stative"></code></div>
+          </div>
+
+          <div class="briefing-grid">
+            <div>
+              <h3>Coach's Rules</h3>
+              <ul id="briefing-rules" class="rule-list"></ul>
+            </div>
+            <div>
+              <h3>Key Signals</h3>
+              <div id="briefing-signals" class="chip-wrap"></div>
+              <h3 class="mt-md">Pitch Examples</h3>
+              <div id="briefing-examples" class="example-stack"></div>
+            </div>
+          </div>
+
+          <div class="panel-actions">
+            <button id="btn-briefing-back" class="btn btn-secondary" type="button">Back to Locker Room</button>
+            <button id="btn-briefing-drill" class="btn btn-primary" type="button">Start Whistle Drill</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PITCH SIGNAL SORTER -->
+      <section id="view-sorter" class="view hidden" aria-live="polite">
+        <div class="panel narrow">
+          <div class="panel-header">
+            <span class="pill pill-pitch">Warm-Up Drill 1</span>
+            <h2>Referee's Whistle: Time-Signal Sorter</h2>
+            <p class="muted">Call the right tense before the whistle blows!</p>
+          </div>
+
+          <div class="progress-track">
+            <div id="sorter-progress-bar" class="progress-fill"></div>
+          </div>
+          <p id="sorter-counter" class="counter-text"></p>
+
+          <div class="pitch-card">
+            <span id="sorter-phrase" class="pitch-phrase"></span>
+          </div>
+
+          <div class="options-stack">
+            <button id="btn-sort-simple" class="btn btn-choice" type="button">
+              <span class="choice-key">1</span> Present Simple (Routine / Schedule)
+            </button>
+            <button id="btn-sort-continuous" class="btn btn-choice" type="button">
+              <span class="choice-key">2</span> Present Continuous (Live Action / Temporary)
+            </button>
+          </div>
+
+          <div id="sorter-feedback" class="feedback-banner hidden">
+            <p id="sorter-feedback-text"></p>
+            <button id="btn-sorter-next" class="btn btn-primary btn-sm" type="button">Next Clue</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TACTIC SENTENCE BUILDER -->
+      <section id="view-builder" class="view hidden" aria-live="polite">
+        <div class="panel narrow">
+          <div class="panel-header">
+            <span id="builder-tense-badge" class="pill pill-pitch"></span>
+            <h2>Warm-Up Drill 2: Tactic Sentence Builder</h2>
+            <p id="builder-prompt" class="muted"></p>
+          </div>
+
+          <div class="progress-track">
+            <div id="builder-progress-bar" class="progress-fill"></div>
+          </div>
+          <p id="builder-counter" class="counter-text"></p>
+
+          <div class="builder-tray-box" aria-label="Your sentence">
+            <div id="builder-selected" class="token-tray"></div>
+          </div>
+
+          <div id="builder-bank" class="token-tray token-bank" aria-label="Word bank"></div>
+
+          <div class="panel-actions">
+            <button id="btn-builder-clear" class="btn btn-secondary" type="button">Clear</button>
+            <button id="btn-builder-check" class="btn btn-primary" type="button">Pass the Ball!</button>
+          </div>
+
+          <div id="builder-feedback" class="feedback-banner hidden">
+            <p id="builder-feedback-text"></p>
+            <button id="btn-builder-next" class="btn btn-primary btn-sm" type="button">Next Tactic</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- MATCH QUARTER QUIZ -->
+      <section id="view-quiz" class="view hidden" aria-live="polite">
+        <div class="panel narrow">
+          <div class="quiz-top">
+            <span id="quiz-stage-label" class="pill pill-pitch"></span>
+            <div class="quiz-top-right">
+              <button id="btn-quiz-var" class="btn btn-var btn-sm" type="button">VAR 50/50 (1)</button>
+              <span id="quiz-type-badge" class="pill pill-gold"></span>
+            </div>
+          </div>
+
+          <div class="progress-track">
+            <div id="quiz-progress-bar" class="progress-fill"></div>
+          </div>
+          <p id="quiz-counter" class="counter-text"></p>
+
+          <pre id="quiz-context" class="context-card hidden"></pre>
+          <h2 id="quiz-prompt" class="quiz-prompt"></h2>
+
+          <div id="quiz-options" class="options-stack"></div>
+
+          <div id="quiz-feedback" class="feedback-banner hidden">
+            <div>
+              <strong id="quiz-feedback-title"></strong>
+              <p id="quiz-feedback-explanation"></p>
+            </div>
+            <button id="btn-quiz-next" class="btn btn-primary" type="button">Next Play (Enter)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- POST-MATCH SUMMARY -->
+      <section id="view-summary" class="view hidden" aria-live="polite">
+        <div class="panel narrow center-text">
+          <div id="summary-trophies" class="summary-trophies"></div>
+          <h2 id="summary-title"></h2>
+          <p id="summary-subtitle" class="muted"></p>
+
+          <div class="summary-metrics">
+            <div class="metric-box">
+              <span>Goals</span>
+              <strong id="summary-goals"></strong>
+            </div>
+            <div class="metric-box">
+              <span>Accuracy</span>
+              <strong id="summary-accuracy"></strong>
+            </div>
+            <div class="metric-box">
+              <span>XP Earned</span>
+              <strong id="summary-xp"></strong>
+            </div>
+          </div>
+
+          <div id="summary-mistakes" class="mistakes-box hidden">
+            <h3>Post-Match Video Analysis (Mistakes)</h3>
+            <div id="summary-mistakes-list" class="mistakes-list"></div>
+          </div>
+
+          <div class="panel-actions center-actions">
+            <button id="btn-summary-retry" class="btn btn-secondary" type="button">Replay Quarter</button>
+            <button id="btn-summary-map" class="btn btn-primary" type="button">Back to Locker Room</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
