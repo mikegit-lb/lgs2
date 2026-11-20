@@ -152,6 +152,115 @@ export const TACTIC_BUILDERS = [
   }
 ];
 
+export const FILL_IN_BLANKS = [
+  {
+    id: 'fib-1',
+    tenseHint: 'Present Continuous (right now)',
+    sentence: 'Look! The winger ____ (run) down the right side of the pitch!',
+    acceptedAnswers: ['is running'],
+    explanation: '"Look!" signals an action happening right now; "run" doubles the "n" -> "is running".'
+  },
+  {
+    id: 'fib-2',
+    tenseHint: 'Present Simple (habit)',
+    sentence: 'Our goalkeeper always ____ (wear) bright orange gloves on matchdays.',
+    acceptedAnswers: ['wears'],
+    explanation: '"Always" signals a routine; singular subject "Our goalkeeper" takes -s -> "wears".'
+  },
+  {
+    id: 'fib-3',
+    tenseHint: 'Present Simple (negative)',
+    sentence: 'Efe ____ (not / like) playing in the rain, so he prefers indoor futsal.',
+    acceptedAnswers: ['doesn\'t like', 'does not like'],
+    explanation: 'Negative Present Simple with "Efe" (he) uses "doesn\'t" + base verb "like".'
+  },
+  {
+    id: 'fib-4',
+    tenseHint: 'Present Continuous (temporary)',
+    sentence: 'We ____ (practice) curved free kicks this week before the cup final.',
+    acceptedAnswers: ['are practicing', 'are practising'],
+    explanation: '"This week" is a temporary training focus; "We" takes "are practicing".'
+  },
+  {
+    id: 'fib-5',
+    tenseHint: 'Stative Verb Trap!',
+    sentence: 'Listen to the fans! They ____ (want) a winning goal in the 90th minute!',
+    acceptedAnswers: ['want'],
+    explanation: '"Want" is a stative verb and stays in Present Simple ("want"), never "are wanting".'
+  },
+  {
+    id: 'fib-6',
+    tenseHint: 'Present Simple (3rd person -es)',
+    sentence: 'Coach Emre ____ (watch) every opponent\'s match video twice a week.',
+    acceptedAnswers: ['watches'],
+    explanation: 'Verbs ending in -ch add -es for he/she/it -> "watches".'
+  },
+  {
+    id: 'fib-7',
+    tenseHint: 'Present Continuous (negative)',
+    sentence: 'The defenders ____ (not / sleep) at the moment; they are blocking every shot!',
+    acceptedAnswers: ['aren\'t sleeping', 'are not sleeping'],
+    explanation: '"At the moment" + plural "The defenders" -> "aren\'t sleeping".'
+  },
+  {
+    id: 'fib-8',
+    tenseHint: 'Present Simple (3rd person -ies)',
+    sentence: 'Our striker ____ (try) to score from the penalty spot after every training.',
+    acceptedAnswers: ['tries'],
+    explanation: 'Consonant + y (try) changes to -ies -> "tries".'
+  },
+  {
+    id: 'fib-9',
+    tenseHint: 'Stative Verb Trap!',
+    sentence: 'Coach, I ____ (not / understand) the offside rule yet. Can you explain?',
+    acceptedAnswers: ['don\'t understand', 'do not understand'],
+    explanation: '"Understand" is a stative verb -> "don\'t understand" (not "am not understanding").'
+  },
+  {
+    id: 'fib-10',
+    tenseHint: 'Present Continuous (silent -e)',
+    sentence: 'Watch Arda! He ____ (make) an amazing through-ball pass right now!',
+    acceptedAnswers: ['is making'],
+    explanation: 'Drop the silent -e in "make" before adding -ing -> "is making".'
+  }
+];
+
+export const MATCHING_ROUNDS = [
+  {
+    id: 'match-1',
+    title: 'Round 1: Match the Time Clue to the Right Verb',
+    subtitle: 'Connect each football time expression on the left with the sentence ending on the right.',
+    pairs: [
+      { id: 'm1-1', left: 'Every Saturday morning,', right: 'our U-14 squad trains at the academy.' },
+      { id: 'm1-2', left: 'Look! Right now,', right: 'the captain is curving the free kick!' },
+      { id: 'm1-3', left: 'Usually before kickoff,', right: 'the goalkeeper stretches for 15 minutes.' },
+      { id: 'm1-4', left: 'At the moment,', right: 'two defenders are blocking the penalty box.' }
+    ]
+  },
+  {
+    id: 'match-2',
+    title: 'Round 2: Locker Room Q&A Match',
+    subtitle: 'Pair each coach or reporter question with its grammatically accurate short answer.',
+    pairs: [
+      { id: 'm2-1', left: 'Does Kerem take the free kicks?', right: 'Yes, he does. He bends them well!' },
+      { id: 'm2-2', left: 'Are the substitutes warming up now?', right: 'No, they aren\'t. They are watching the corner.' },
+      { id: 'm2-3', left: 'Do you train on Sundays?', right: 'No, we don\'t. Sunday is our rest day.' },
+      { id: 'm2-4', left: 'Is the referee checking VAR right now?', right: 'Yes, he is! Wait for the whistle.' }
+    ]
+  },
+  {
+    id: 'match-3',
+    title: 'Round 3: Stative vs. Action Match',
+    subtitle: 'Match each football subject/clue with the natural Present Simple or Continuous form.',
+    pairs: [
+      { id: 'm3-1', left: 'Our coach (know — right now)', right: 'knows the rival team\'s weakness.' },
+      { id: 'm3-2', left: 'The stadium fans (sing — right now)', right: 'are singing the club anthem loudly.' },
+      { id: 'm3-3', left: 'The midfielder (prefer — always)', right: 'prefers passing to shooting from far.' },
+      { id: 'm3-4', left: 'Our striker (shoot — at this second)', right: 'is shooting toward the top corner!' }
+    ]
+  }
+];
+
 export const MATCH_STAGES = [
   {
     id: 'stage-1',

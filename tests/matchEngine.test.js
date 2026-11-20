@@ -4,6 +4,8 @@ import {
   TACTICAL_BRIEFINGS,
   PITCH_SIGNALS,
   TACTIC_BUILDERS,
+  FILL_IN_BLANKS,
+  MATCHING_ROUNDS,
   MATCH_STAGES
 } from '../src/matchData.js';
 import {
@@ -15,13 +17,16 @@ import {
   getStageSummary,
   getManagerRank,
   getMatchMinute,
+  checkFillBlank,
   saveProgress,
   loadProgress
 } from '../src/matchEngine.js';
 import {
   createShootoutState,
   applyQuestionOutcome,
+  setCurve,
   stepKeeper,
+  launchPass,
   launchShot,
   stepBall
 } from '../src/pitchGame.js';
@@ -161,9 +166,9 @@ test('pitchGame shootout initializes 5 rounds and adjusts keeper speed by questi
 });
 
 test('pitchGame ball scores when aimed away from keeper and advances round', () => {
-  let s = applyQuestionOutcome(createShootoutState(5), true);
-  // Place keeper and defender on the far left and aim far right with sweet-spot power
-  s = { ...s, keeperX: 180, keeperWidth: 66, defenderX: 180, defenderWidth: 44, power: 0.7 };
+  let s = applyQuestionOutcome(createShootoutState(6), true);
+  // Place keeper on the far left and clear defenders, aim far right with sweet-spot power
+  s = { ...s, keeperX: 180, keeperWidth: 66, defenders: [], power: 0.7, curve: 0 };
   s = launchShot(s, 460, 70);
   assert.equal(s.phase, 'flying');
 
@@ -178,11 +183,19 @@ test('pitchGame ball scores when aimed away from keeper and advances round', () 
 });
 
 test('pitchGame defender blocks shots in its path and round difficulty scales keeper speed', () => {
-  const r1 = applyQuestionOutcome(createShootoutState(5), true);
-  const r4 = applyQuestionOutcome({ ...createShootoutState(5), round: 4 }, true);
+  const r1 = applyQuestionOutcome(createShootoutState(6), true);
+  const r4 = applyQuestionOutcome({ ...createShootoutState(6), round: 4 }, true);
   assert.ok(r4.keeperSpeed > r1.keeperSpeed);
 
-  let blocked = { ...r1, keeperX: 180, defenderX: 320, defenderY: 200, defenderWidth: 48, power: 0.7 };
+  let blocked = {
+    ...r1,
+    playType: 'freekick',
+    phase: 'aim',
+    keeperX: 180,
+    defenders: [{ x: 320, y: 200, width: 48, dir: 1, speed: 0 }],
+    power: 0.7,
+    curve: 0
+  };
   blocked = launchShot(blocked, 320, 75);
   for (let i = 0; i < 60 && blocked.phase === 'flying'; i += 1) {
     blocked = stepBall(blocked, 0.016);
@@ -190,4 +203,50 @@ test('pitchGame defender blocks shots in its path and round difficulty scales ke
   assert.equal(blocked.phase, 'result');
   assert.equal(blocked.lastOutcome, 'blocked');
   assert.equal(blocked.playerScore, 0);
+});
+
+test('pitchGame supports curving shots, 3-man freekick walls, and pass-to-teammate plays', () => {
+  // Curve bends ball X trajectory laterally
+  let curved = applyQuestionOutcome(createShootoutState(6), true);
+  curved = { ...curved, playType: 'penalty', phase: 'aim', defenders: [], keeperX: 180, power: 0.7 };
+  curved = setCurve(curved, 0.8);
+  assert.equal(curved.curve, 0.8);
+  curved = launchShot(curved, 320, 75);
+  const startVx = curved.ballVx;
+  curved = stepBall(curved, 0.05);
+  assert.ok(curved.ballVx > startVx, 'Positive curve should bend ball velocity rightward');
+
+  // Freekick round spawns a 3-defender wall
+  const fk = applyQuestionOutcome({ ...createShootoutState(6), round: 2 }, true);
+  assert.equal(fk.playType, 'freekick');
+  assert.equal(fk.defenders.length, 3);
+
+  // Pass play starts in 'pass' phase and connects to teammate to enter 'aim'
+  let passState = applyQuestionOutcome({ ...createShootoutState(6), round: 3 }, true);
+  assert.equal(passState.playType, 'pass_play');
+  assert.equal(passState.phase, 'pass');
+  passState = { ...passState, defenders: [], teammateX: 380, teammateY: 225 };
+  passState = launchPass(passState, 380, 225);
+  assert.equal(passState.phase, 'passing');
+  for (let i = 0; i < 80 && passState.phase === 'passing'; i += 1) {
+    passState = stepBall(passState, 0.016);
+  }
+  assert.equal(passState.phase, 'aim');
+});
+
+test('FILL_IN_BLANKS, MATCHING_ROUNDS, and checkFillBlank work accurately', () => {
+  assert.equal(FILL_IN_BLANKS.length, 10);
+  for (const item of FILL_IN_BLANKS) {
+    assert.ok(item.id && item.sentence.includes('____') && item.acceptedAnswers.length >= 1);
+    assert.equal(checkFillBlank(item, `  ${item.acceptedAnswers[0].toUpperCase()}  `), true);
+    assert.equal(checkFillBlank(item, 'wrong verb'), false);
+  }
+
+  assert.equal(MATCHING_ROUNDS.length, 3);
+  for (const round of MATCHING_ROUNDS) {
+    assert.equal(round.pairs.length, 4);
+    for (const pair of round.pairs) {
+      assert.ok(pair.id && pair.left && pair.right);
+    }
+  }
 });

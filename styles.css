@@ -719,3 +719,95 @@ body {
   border-radius: 14px;
   padding: 16px 18px;
 }
+
+.curve-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.curve-btn {
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.curve-btn.is-active {
+  background: #facc15;
+  color: #0f172a;
+  border-color: #fde047;
+}
+
+.fill-sentence-card {
+  background: var(--surface-alt);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.fill-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.text-input {
+  flex: 1 1 240px;
+  font: inherit;
+  font-size: 1.12rem;
+  font-weight: 700;
+  padding: 12px 14px;
+  border: 2.5px solid var(--border);
+  border-radius: 12px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--pitch);
+}
+
+.matching-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.match-col {
+  display: grid;
+  gap: 10px;
+}
+
+.match-card {
+  font: inherit;
+  font-size: 1.02rem;
+  font-weight: 700;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2.5px solid var(--border);
+  border-bottom-width: 4px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.match-card.is-selected {
+  border-color: var(--sky);
+  background: var(--sky-bg);
+}
+
+.match-card.is-matched {
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: #14532d;
+  cursor: default;
+}
+
+.match-card.is-wrong {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}

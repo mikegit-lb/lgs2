@@ -2,6 +2,8 @@ import {
   TACTICAL_BRIEFINGS,
   PITCH_SIGNALS,
   TACTIC_BUILDERS,
+  FILL_IN_BLANKS,
+  MATCHING_ROUNDS,
   MATCH_STAGES
 } from './matchData.js';
 import {
@@ -13,6 +15,7 @@ import {
   getStageSummary,
   getManagerRank,
   getMatchMinute,
+  checkFillBlank,
   saveProgress,
   loadProgress,
   STORAGE_KEY
@@ -28,8 +31,10 @@ import {
   PENALTY_Y,
   createShootoutState,
   applyQuestionOutcome,
+  setCurve,
   moveAim,
   stepKeeper,
+  launchPass,
   launchShot,
   stepBall,
   advanceShootoutRound
@@ -42,6 +47,8 @@ const views = {
   briefing: $('view-briefing'),
   sorter: $('view-sorter'),
   builder: $('view-builder'),
+  fill: $('view-fill'),
+  matching: $('view-matching'),
   pitch: $('view-pitch'),
   quiz: $('view-quiz'),
   summary: $('view-summary')
@@ -53,7 +60,9 @@ let soundEnabled = true;
 let audioCtx = null;
 let sorterState = { index: 0, score: 0, answered: false };
 let builderState = { index: 0, score: 0, answered: false, pool: [], chosenIndices: [] };
-let arcadeState = createShootoutState(5);
+let fillState = { index: 0, score: 0, answered: false };
+let matchState = { roundIndex: 0, selectedLeftId: null, matchedIds: new Set(), rightOrder: [], wrongRightId: null };
+let arcadeState = createShootoutState(6);
 let arcadeQuestions = [];
 let arcadeRafId = null;
 let arcadeLastTs = 0;
@@ -173,6 +182,32 @@ function renderHub() {
   `;
   builderCard.querySelector('button').addEventListener('click', startBuilder);
   prepEl.appendChild(builderCard);
+
+  const fillCard = document.createElement('article');
+  fillCard.className = 'card';
+  fillCard.innerHTML = `
+    <div>
+      <span class="pill pill-gold">Drill 3 • ${FILL_IN_BLANKS.length} Blanks</span>
+      <h4>Fill in the Blanks</h4>
+      <p>Type the exact Present Simple or Continuous verb form to complete football plays.</p>
+    </div>
+    <button class="btn btn-primary" type="button">Start Fill-in-Blanks</button>
+  `;
+  fillCard.querySelector('button').addEventListener('click', startFill);
+  prepEl.appendChild(fillCard);
+
+  const matchCard = document.createElement('article');
+  matchCard.className = 'card';
+  matchCard.innerHTML = `
+    <div>
+      <span class="pill pill-gold">Drill 4 • ${MATCHING_ROUNDS.length} Boards</span>
+      <h4>Match the Pairs</h4>
+      <p>Link time clues, Q&amp;As, and stative verbs to their matching pitch endings.</p>
+    </div>
+    <button class="btn btn-primary" type="button">Play Matching</button>
+  `;
+  matchCard.querySelector('button').addEventListener('click', startMatching);
+  prepEl.appendChild(matchCard);
 
   const stagesEl = $('hub-stages');
   stagesEl.innerHTML = '';
@@ -432,6 +467,179 @@ function advanceBuilder() {
   renderBuilder();
 }
 
+function startFill() {
+  fillState = { index: 0, score: 0, answered: false };
+  renderFill();
+  showView('fill');
+}
+
+function renderFill() {
+  const item = FILL_IN_BLANKS[fillState.index];
+  const pct = Math.round((fillState.index / FILL_IN_BLANKS.length) * 100);
+  $('fill-hint-badge').textContent = item.tenseHint;
+  $('fill-progress-bar').style.width = `${pct}%`;
+  $('fill-counter').textContent = `Blank ${fillState.index + 1} of ${FILL_IN_BLANKS.length}  •  Score: ${fillState.score}`;
+  $('fill-sentence').textContent = item.sentence;
+
+  const input = $('fill-input');
+  input.value = '';
+  input.disabled = false;
+  $('btn-fill-check').disabled = false;
+
+  const fb = $('fill-feedback');
+  fb.classList.add('hidden');
+  fb.classList.remove('is-correct', 'is-wrong');
+  setTimeout(() => input.focus(), 0);
+}
+
+function submitFill() {
+  if (fillState.answered) return;
+  const input = $('fill-input');
+  const raw = input.value.trim();
+  if (!raw) return;
+
+  fillState.answered = true;
+  input.disabled = true;
+  $('btn-fill-check').disabled = true;
+
+  const item = FILL_IN_BLANKS[fillState.index];
+  const isCorrect = checkFillBlank(item, raw);
+  if (isCorrect) {
+    fillState.score += 1;
+    state = { ...state, totalXp: state.totalXp + 15 };
+    saveProgress(window.localStorage, state);
+    renderHud();
+    playSound('goal');
+  } else {
+    playSound('foul');
+  }
+
+  const fb = $('fill-feedback');
+  fb.classList.remove('hidden', 'is-correct', 'is-wrong');
+  fb.classList.add(isCorrect ? 'is-correct' : 'is-wrong');
+  $('fill-feedback-text').textContent = isCorrect
+    ? `Correct (+15 XP)! ${item.explanation}`
+    : `Expected: "${item.acceptedAnswers[0]}" — ${item.explanation}`;
+  $('btn-fill-next').textContent =
+    fillState.index + 1 >= FILL_IN_BLANKS.length ? 'Finish Fill-in-Blanks' : 'Next Blank (Enter)';
+}
+
+function advanceFill() {
+  if (!fillState.answered) return;
+  if (fillState.index + 1 >= FILL_IN_BLANKS.length) {
+    renderHub();
+    return;
+  }
+  fillState.index += 1;
+  fillState.answered = false;
+  renderFill();
+}
+
+function startMatching() {
+  matchState = {
+    roundIndex: 0,
+    selectedLeftId: null,
+    matchedIds: new Set(),
+    rightOrder: shuffleTokens(MATCHING_ROUNDS[0].pairs),
+    wrongRightId: null
+  };
+  renderMatching();
+  showView('matching');
+}
+
+function renderMatching() {
+  const round = MATCHING_ROUNDS[matchState.roundIndex];
+  $('match-title').textContent = round.title;
+  $('match-subtitle').textContent = round.subtitle;
+  $('match-counter').textContent = `Board ${matchState.roundIndex + 1} of ${MATCHING_ROUNDS.length}  •  Matched: ${matchState.matchedIds.size} / ${round.pairs.length}`;
+
+  const leftCol = $('match-left-col');
+  leftCol.innerHTML = '';
+  for (const pair of round.pairs) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'match-card';
+    btn.textContent = pair.left;
+    if (matchState.matchedIds.has(pair.id)) {
+      btn.classList.add('is-matched');
+      btn.disabled = true;
+    } else {
+      if (matchState.selectedLeftId === pair.id) btn.classList.add('is-selected');
+      btn.addEventListener('click', () => {
+        matchState.selectedLeftId = pair.id;
+        matchState.wrongRightId = null;
+        renderMatching();
+      });
+    }
+    leftCol.appendChild(btn);
+  }
+
+  const rightCol = $('match-right-col');
+  rightCol.innerHTML = '';
+  for (const pair of matchState.rightOrder) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'match-card';
+    btn.textContent = pair.right;
+    if (matchState.matchedIds.has(pair.id)) {
+      btn.classList.add('is-matched');
+      btn.disabled = true;
+    } else {
+      if (matchState.wrongRightId === pair.id) btn.classList.add('is-wrong');
+      btn.addEventListener('click', () => handleMatchRight(pair.id));
+    }
+    rightCol.appendChild(btn);
+  }
+
+  const fb = $('match-feedback');
+  if (matchState.matchedIds.size === round.pairs.length) {
+    fb.classList.remove('hidden', 'is-wrong');
+    fb.classList.add('is-correct');
+    $('match-feedback-text').textContent = 'Board cleared! +25 XP earned!';
+    $('btn-match-next').textContent =
+      matchState.roundIndex + 1 >= MATCHING_ROUNDS.length ? 'Finish Matching' : 'Next Board';
+  } else {
+    fb.classList.add('hidden');
+  }
+}
+
+function handleMatchRight(rightId) {
+  if (!matchState.selectedLeftId) return;
+  const round = MATCHING_ROUNDS[matchState.roundIndex];
+  if (matchState.selectedLeftId === rightId) {
+    matchState.matchedIds.add(rightId);
+    matchState.selectedLeftId = null;
+    matchState.wrongRightId = null;
+    playSound('goal');
+    if (matchState.matchedIds.size === round.pairs.length) {
+      state = { ...state, totalXp: state.totalXp + 25 };
+      saveProgress(window.localStorage, state);
+      renderHud();
+      playSound('fulltime');
+    }
+  } else {
+    matchState.wrongRightId = rightId;
+    playSound('foul');
+  }
+  renderMatching();
+}
+
+function advanceMatching() {
+  if (matchState.roundIndex + 1 >= MATCHING_ROUNDS.length) {
+    renderHub();
+    return;
+  }
+  const nextIdx = matchState.roundIndex + 1;
+  matchState = {
+    roundIndex: nextIdx,
+    selectedLeftId: null,
+    matchedIds: new Set(),
+    rightOrder: shuffleTokens(MATCHING_ROUNDS[nextIdx].pairs),
+    wrongRightId: null
+  };
+  renderMatching();
+}
+
 function pickArcadeQuestions(count) {
   const all = MATCH_STAGES.flatMap((s) => s.questions);
   const copy = [...all];
@@ -453,9 +661,15 @@ function spawnGoalConfetti() {
   }));
 }
 
+function formatPlayType(playType) {
+  if (playType === 'freekick') return '🌀 Free Kick (3-Man Wall)';
+  if (playType === 'pass_play') return '🎯 Through-Ball Pass';
+  return '⚽ Penalty Kick';
+}
+
 function startArcadeMatch() {
-  arcadeQuestions = pickArcadeQuestions(5);
-  arcadeState = createShootoutState(5);
+  arcadeQuestions = pickArcadeQuestions(6);
+  arcadeState = createShootoutState(6);
   confetti = [];
   renderArcadeUI();
   showView('pitch');
@@ -464,19 +678,27 @@ function startArcadeMatch() {
   arcadeRafId = requestAnimationFrame(arcadeLoop);
 }
 
+function renderCurveButtons() {
+  $('btn-curve-left').classList.toggle('is-active', arcadeState.curve < -0.1);
+  $('btn-curve-zero').classList.toggle('is-active', Math.abs(arcadeState.curve) <= 0.1);
+  $('btn-curve-right').classList.toggle('is-active', arcadeState.curve > 0.1);
+}
+
 function renderArcadeUI() {
   $('arcade-player-score').textContent = String(arcadeState.playerScore);
   $('arcade-rival-score').textContent = String(arcadeState.rivalScore);
-  $('arcade-round-label').textContent = `Round ${arcadeState.round} / ${arcadeState.totalRounds}`;
+  $('arcade-round-label').textContent = `Round ${arcadeState.round} / ${arcadeState.totalRounds} • ${formatPlayType(arcadeState.playType)}`;
 
   const qBox = $('arcade-question-box');
   const hintBar = $('arcade-controls-hint');
+  const curveBar = $('curve-controls');
   const resBar = $('arcade-result-bar');
 
   if (arcadeState.phase === 'question') {
-    $('arcade-status-text').textContent = 'Answer the LGS question to power up your shot!';
+    $('arcade-status-text').textContent = 'Answer the LGS question to power up your play!';
     qBox.classList.remove('hidden');
     hintBar.classList.add('hidden');
+    curveBar.classList.add('hidden');
     resBar.classList.add('hidden');
 
     const q = arcadeQuestions[arcadeState.round - 1];
@@ -499,36 +721,52 @@ function renderArcadeUI() {
       btn.addEventListener('click', () => handleArcadeAnswer(idx));
       optsEl.appendChild(btn);
     });
-  } else if (arcadeState.phase === 'aim' || arcadeState.phase === 'flying') {
-    $('arcade-status-text').textContent = arcadeState.superShot
-      ? '🔥 SUPER SHOT READY! Aim & Shoot!'
-      : '⚠️ PRESSURE SHOT! Beat the fast keeper!';
+  } else if (arcadeState.phase === 'pass' || arcadeState.phase === 'passing') {
+    $('arcade-status-text').textContent = '🎯 STEP 1: Pass past the 2 defenders to your teammate!';
+    $('arcade-hint-line').innerHTML = 'Aim at your <strong>blue Striker teammate</strong> • <strong>Click / Space</strong> to PASS!';
     qBox.classList.add('hidden');
     hintBar.classList.remove('hidden');
+    curveBar.classList.add('hidden');
+    resBar.classList.add('hidden');
+  } else if (arcadeState.phase === 'aim' || arcadeState.phase === 'flying') {
+    $('arcade-status-text').textContent = arcadeState.playType === 'freekick'
+      ? '🌀 FREE KICK! Use Curl Left/Right (Q/E) to bend it around the wall!'
+      : arcadeState.superShot
+        ? '🔥 SUPER SHOT READY! Time the green PWR zone & Shoot!'
+        : '⚠️ PRESSURE SHOT! Beat the fast keeper!';
+    $('arcade-hint-line').innerHTML = 'Aim with <strong>Mouse / Touch / Arrows</strong> • <strong>Q/E</strong> to Curve • <strong>Click / Space</strong> to SHOOT!';
+    qBox.classList.add('hidden');
+    hintBar.classList.remove('hidden');
+    curveBar.classList.remove('hidden');
+    renderCurveButtons();
     resBar.classList.add('hidden');
   } else if (arcadeState.phase === 'result') {
     qBox.classList.add('hidden');
     hintBar.classList.add('hidden');
+    curveBar.classList.add('hidden');
     resBar.classList.remove('hidden', 'is-correct', 'is-wrong');
     const isGoal = arcadeState.lastOutcome === 'goal';
     resBar.classList.add(isGoal ? 'is-correct' : 'is-wrong');
     $('arcade-result-title').textContent = isGoal
-      ? 'GOOOAL! Top-corner finish!'
-      : arcadeState.lastOutcome === 'blocked'
-        ? 'BLOCKED by the Defender Wall!'
-        : arcadeState.lastOutcome === 'saved'
-          ? 'SAVED by the Goalkeeper!'
-          : 'WIDE / OVER THE BAR!';
+      ? 'GOOOAL! Unstoppable finish!'
+      : arcadeState.lastOutcome === 'intercepted'
+        ? 'INTERCEPTED! The defender cut off your pass!'
+        : arcadeState.lastOutcome === 'blocked'
+          ? 'BLOCKED by the Defender Wall!'
+          : arcadeState.lastOutcome === 'saved'
+            ? 'SAVED by the Goalkeeper!'
+            : 'WIDE / OVER THE BAR!';
     $('arcade-result-desc').textContent = isGoal
-      ? '+35 XP earned! Ready for the next round?'
+      ? '+35 XP earned! Ready for the next play?'
       : arcadeState.superShot && arcadeState.round % 2 !== 0
         ? 'Your English answer protected you from a Rival counter-goal.'
         : 'Rival FC scored on the counter-attack!';
     $('btn-arcade-next').textContent =
-      arcadeState.round >= arcadeState.totalRounds ? 'See Final Score (Enter)' : 'Next Round (Enter)';
+      arcadeState.round >= arcadeState.totalRounds ? 'See Final Score (Enter)' : 'Next Play (Enter)';
   } else if (arcadeState.phase === 'finished') {
     qBox.classList.add('hidden');
     hintBar.classList.add('hidden');
+    curveBar.classList.add('hidden');
     resBar.classList.remove('hidden', 'is-correct', 'is-wrong');
     const won = arcadeState.playerScore > arcadeState.rivalScore;
     const draw = arcadeState.playerScore === arcadeState.rivalScore;
@@ -538,7 +776,7 @@ function renderArcadeUI() {
       : draw
         ? `🤝 FULL TIME: Draw ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
         : `⚽ FULL TIME: Rival FC Wins ${arcadeState.rivalScore}-${arcadeState.playerScore}`;
-    $('arcade-result-desc').textContent = 'Play again or return to the Locker Room for more quarters.';
+    $('arcade-result-desc').textContent = 'Play again or return to the Locker Room for more drills.';
     $('btn-arcade-next').textContent = 'Play Again';
   }
 }
@@ -663,45 +901,80 @@ function drawPitch() {
   ctx.arc(kx + arcadeState.keeperWidth / 2 + 4, ky - 16, 7.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Moving Defender Wall (red Rival FC jersey)
-  const dx = arcadeState.defenderX;
-  const dy = arcadeState.defenderY;
-  ctx.fillStyle = '#dc2626';
-  ctx.fillRect(dx - arcadeState.defenderWidth / 2, dy - 26, arcadeState.defenderWidth, 24);
-  ctx.fillStyle = '#991b1b';
-  ctx.fillRect(dx - 12, dy - 2, 24, 8);
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath();
-  ctx.arc(dx, dy - 35, 10, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('DEF', dx, dy - 10);
+  // Moving Defenders (3-man freekick wall or 2 midfielders)
+  for (const def of arcadeState.defenders) {
+    const dx = def.x;
+    const dy = def.y;
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(dx - def.width / 2, dy - 26, def.width, 24);
+    ctx.fillStyle = '#991b1b';
+    ctx.fillRect(dx - 11, dy - 2, 22, 8);
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.arc(dx, dy - 35, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DEF', dx, dy - 10);
+  }
 
-  // Striker at penalty spot
+  // Teammate striker during pass_play
+  if (arcadeState.teammateX !== null && (arcadeState.phase === 'pass' || arcadeState.phase === 'passing')) {
+    const mx = arcadeState.teammateX;
+    const my = arcadeState.teammateY;
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(mx, my - 10, 26, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(mx - 14, my - 22, 28, 22);
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.arc(mx, my - 31, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PASS', mx, my - 7);
+  }
+
+  // Striker / Kicker at ball start position
   ctx.fillStyle = '#0284c7';
-  ctx.fillRect(PENALTY_X - 14, PENALTY_Y + 14, 28, 22);
+  ctx.fillRect(arcadeState.startX - 14, arcadeState.startY + 14, 28, 22);
   ctx.fillStyle = '#fde68a';
   ctx.beginPath();
-  ctx.arc(PENALTY_X, PENALTY_Y + 6, 9, 0, Math.PI * 2);
+  ctx.arc(arcadeState.startX, arcadeState.startY + 6, 9, 0, Math.PI * 2);
   ctx.fill();
 
-  // Aiming reticle + Power Meter during 'aim' phase
-  if (arcadeState.phase === 'aim') {
+  // Dotted curved flight preview during 'aim' or 'pass'
+  if (arcadeState.phase === 'aim' || arcadeState.phase === 'pass') {
+    const targetY = arcadeState.phase === 'pass' ? (arcadeState.teammateY ?? 222) : arcadeState.aimY;
+    const midX = (arcadeState.ballX + arcadeState.aimX) / 2 - (arcadeState.phase === 'aim' ? arcadeState.curve * 75 : 0);
+    const midY = (arcadeState.ballY + targetY) / 2;
+
+    ctx.strokeStyle = arcadeState.phase === 'pass' ? 'rgba(74, 222, 128, 0.85)' : 'rgba(250, 204, 21, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.moveTo(arcadeState.ballX, arcadeState.ballY);
+    ctx.quadraticCurveTo(midX, midY, arcadeState.aimX, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     ctx.strokeStyle = arcadeState.superShot ? '#facc15' : '#f87171';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(arcadeState.aimX, arcadeState.aimY, 16, 0, Math.PI * 2);
+    ctx.arc(arcadeState.aimX, targetY, 15, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(arcadeState.aimX - 22, arcadeState.aimY);
-    ctx.lineTo(arcadeState.aimX + 22, arcadeState.aimY);
-    ctx.moveTo(arcadeState.aimX, arcadeState.aimY - 22);
-    ctx.lineTo(arcadeState.aimX, arcadeState.aimY + 22);
-    ctx.stroke();
+  }
 
-    // Power bar on the right side
+  // Power Meter during 'aim' phase
+  if (arcadeState.phase === 'aim') {
     const barX = 576;
     const barY = 175;
     const barW = 24;
@@ -710,9 +983,9 @@ function drawPitch() {
     ctx.fillRect(barX - 4, barY - 22, barW + 8, barH + 30);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
     ctx.fillText('PWR', barX + barW / 2, barY - 7);
 
-    // Sweet-spot & Overpower zones
     ctx.fillStyle = '#dc2626';
     ctx.fillRect(barX, barY, barW, barH * 0.14);
     ctx.fillStyle = '#22c55e';
@@ -720,19 +993,20 @@ function drawPitch() {
     ctx.fillStyle = '#facc15';
     ctx.fillRect(barX, barY + barH * 0.65, barW, barH * 0.35);
 
-    // Current power marker
     const markerY = barY + (1 - arcadeState.power) * barH;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(barX - 4, markerY - 3, barW + 8, 6);
   }
 
-  // Ball trail when flying
-  if (arcadeState.phase === 'flying') {
-    ctx.strokeStyle = arcadeState.superShot ? 'rgba(250, 204, 21, 0.55)' : 'rgba(255, 255, 255, 0.35)';
-    ctx.lineWidth = 8;
+  // Smooth curved ball trail
+  if (arcadeState.ballTrail && arcadeState.ballTrail.length > 1) {
+    ctx.strokeStyle = arcadeState.superShot ? 'rgba(250, 204, 21, 0.6)' : 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 7;
     ctx.beginPath();
-    ctx.moveTo(PENALTY_X, PENALTY_Y);
-    ctx.lineTo(arcadeState.ballX, arcadeState.ballY);
+    ctx.moveTo(arcadeState.ballTrail[0].x, arcadeState.ballTrail[0].y);
+    for (let i = 1; i < arcadeState.ballTrail.length; i += 1) {
+      ctx.lineTo(arcadeState.ballTrail[i].x, arcadeState.ballTrail[i].y);
+    }
     ctx.stroke();
   }
 
@@ -773,7 +1047,7 @@ function arcadeLoop(now) {
   arcadeState = stepKeeper(arcadeState, dt);
   arcadeState = stepBall(arcadeState, dt);
 
-  if (prevPhase === 'flying' && arcadeState.phase === 'result') {
+  if ((prevPhase === 'flying' || prevPhase === 'passing') && arcadeState.phase === 'result') {
     if (arcadeState.lastOutcome === 'goal') {
       state = { ...state, totalXp: state.totalXp + 35 };
       saveProgress(window.localStorage, state);
@@ -783,6 +1057,9 @@ function arcadeLoop(now) {
     } else {
       playSound('foul');
     }
+    renderArcadeUI();
+  } else if (prevPhase === 'passing' && arcadeState.phase === 'aim') {
+    playSound('goal');
     renderArcadeUI();
   }
 
@@ -967,27 +1244,50 @@ $('btn-sound').addEventListener('click', () => {
 $('btn-home').addEventListener('click', renderHub);
 $('btn-play-arcade').addEventListener('click', startArcadeMatch);
 $('btn-arcade-next').addEventListener('click', handleArcadeAdvance);
+$('btn-fill-check').addEventListener('click', submitFill);
+$('btn-fill-next').addEventListener('click', advanceFill);
+$('btn-match-next').addEventListener('click', advanceMatching);
+
+$('btn-curve-left').addEventListener('click', () => {
+  arcadeState = setCurve(arcadeState, -0.8);
+  renderCurveButtons();
+});
+$('btn-curve-zero').addEventListener('click', () => {
+  arcadeState = setCurve(arcadeState, 0);
+  renderCurveButtons();
+});
+$('btn-curve-right').addEventListener('click', () => {
+  arcadeState = setCurve(arcadeState, 0.8);
+  renderCurveButtons();
+});
 
 const pitchCanvas = $('pitch-canvas');
 if (pitchCanvas) {
   const updateAimFromPointer = (clientX, clientY) => {
-    if (arcadeState.phase !== 'aim') return;
+    if (arcadeState.phase !== 'aim' && arcadeState.phase !== 'pass') return;
     const rect = pitchCanvas.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * PITCH_WIDTH;
     const y = ((clientY - rect.top) / rect.height) * PITCH_HEIGHT;
+    const minY = arcadeState.phase === 'pass' ? 190 : GOAL_TOP - 8;
+    const maxY = arcadeState.phase === 'pass' ? 255 : GOAL_LINE_Y - 6;
     arcadeState = {
       ...arcadeState,
       aimX: Math.max(GOAL_LEFT - 18, Math.min(GOAL_RIGHT + 18, x)),
-      aimY: Math.max(GOAL_TOP - 8, Math.min(GOAL_LINE_Y - 6, y))
+      aimY: Math.max(minY, Math.min(maxY, y))
     };
   };
 
   pitchCanvas.addEventListener('pointermove', (e) => updateAimFromPointer(e.clientX, e.clientY));
   pitchCanvas.addEventListener('pointerdown', (e) => {
-    if (arcadeState.phase !== 'aim') return;
-    updateAimFromPointer(e.clientX, e.clientY);
-    arcadeState = launchShot(arcadeState);
-    renderArcadeUI();
+    if (arcadeState.phase === 'pass') {
+      updateAimFromPointer(e.clientX, e.clientY);
+      arcadeState = launchPass(arcadeState);
+      renderArcadeUI();
+    } else if (arcadeState.phase === 'aim') {
+      updateAimFromPointer(e.clientX, e.clientY);
+      arcadeState = launchShot(arcadeState);
+      renderArcadeUI();
+    }
   });
 }
 $('btn-briefing-back').addEventListener('click', renderHub);
@@ -1039,17 +1339,29 @@ document.addEventListener('keydown', (event) => {
       event.preventDefault();
       advanceSorter();
     }
+  } else if (activeView === 'fill') {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (!fillState.answered) submitFill();
+      else advanceFill();
+    }
   } else if (activeView === 'pitch') {
     if (arcadeState.phase === 'question' && ['1', '2', '3', '4'].includes(event.key)) {
       handleArcadeAnswer(Number(event.key) - 1);
-    } else if (arcadeState.phase === 'aim') {
+    } else if (arcadeState.phase === 'pass' || arcadeState.phase === 'aim') {
       if (event.key === 'ArrowLeft') { event.preventDefault(); arcadeState = moveAim(arcadeState, -22, 0); }
       else if (event.key === 'ArrowRight') { event.preventDefault(); arcadeState = moveAim(arcadeState, 22, 0); }
       else if (event.key === 'ArrowUp') { event.preventDefault(); arcadeState = moveAim(arcadeState, 0, -14); }
       else if (event.key === 'ArrowDown') { event.preventDefault(); arcadeState = moveAim(arcadeState, 0, 14); }
-      else if (event.key === ' ') {
+      else if (arcadeState.phase === 'aim' && (event.key === 'q' || event.key === 'Q')) {
+        arcadeState = setCurve(arcadeState, arcadeState.curve - 0.4);
+        renderCurveButtons();
+      } else if (arcadeState.phase === 'aim' && (event.key === 'e' || event.key === 'E')) {
+        arcadeState = setCurve(arcadeState, arcadeState.curve + 0.4);
+        renderCurveButtons();
+      } else if (event.key === ' ') {
         event.preventDefault();
-        arcadeState = launchShot(arcadeState);
+        arcadeState = arcadeState.phase === 'pass' ? launchPass(arcadeState) : launchShot(arcadeState);
         renderArcadeUI();
       }
     } else if ((arcadeState.phase === 'result' || arcadeState.phase === 'finished') && event.key === 'Enter') {

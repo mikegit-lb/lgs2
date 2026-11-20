@@ -233,6 +233,16 @@ export function getStageSummary(state) {
   };
 }
 
+export function checkFillBlank(item, userInput) {
+  if (!item || !Array.isArray(item.acceptedAnswers) || typeof userInput !== 'string') {
+    return false;
+  }
+  const normalized = userInput.trim().toLowerCase().replace(/\s+/g, ' ');
+  return item.acceptedAnswers.some(
+    (ans) => ans.trim().toLowerCase().replace(/\s+/g, ' ') === normalized
+  );
+}
+
 export function saveProgress(storage, state) {
   if (!storage || typeof storage.setItem !== 'function') return false;
   try {

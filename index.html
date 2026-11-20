@@ -165,6 +165,58 @@
         </div>
       </section>
 
+      <!-- FILL IN THE BLANKS DRILL -->
+      <section id="view-fill" class="view hidden" aria-live="polite">
+        <div class="panel narrow">
+          <div class="panel-header">
+            <span id="fill-hint-badge" class="pill pill-gold"></span>
+            <h2>Drill 3: Fill in the Blanks</h2>
+            <p class="muted">Type the correct Present Simple or Present Continuous verb form.</p>
+          </div>
+
+          <div class="progress-track">
+            <div id="fill-progress-bar" class="progress-fill"></div>
+          </div>
+          <p id="fill-counter" class="counter-text"></p>
+
+          <div class="fill-sentence-card">
+            <p id="fill-sentence" class="quiz-prompt"></p>
+            <div class="fill-input-row">
+              <input id="fill-input" class="text-input" type="text" autocomplete="off" placeholder="Type verb form (e.g. is running)..." />
+              <button id="btn-fill-check" class="btn btn-primary" type="button">Check</button>
+            </div>
+          </div>
+
+          <div id="fill-feedback" class="feedback-banner hidden">
+            <p id="fill-feedback-text"></p>
+            <button id="btn-fill-next" class="btn btn-primary btn-sm" type="button">Next Blank</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- MATCH THE PAIRS DRILL -->
+      <section id="view-matching" class="view hidden" aria-live="polite">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="pill pill-pitch">Drill 4 • Match the Pairs</span>
+            <h2 id="match-title"></h2>
+            <p id="match-subtitle" class="muted"></p>
+          </div>
+
+          <p id="match-counter" class="counter-text"></p>
+
+          <div class="matching-grid">
+            <div id="match-left-col" class="match-col"></div>
+            <div id="match-right-col" class="match-col"></div>
+          </div>
+
+          <div id="match-feedback" class="feedback-banner hidden">
+            <p id="match-feedback-text"></p>
+            <button id="btn-match-next" class="btn btn-primary btn-sm" type="button">Next Round</button>
+          </div>
+        </div>
+      </section>
+
       <!-- LIVE 2D PITCH SHOOTOUT GAME -->
       <section id="view-pitch" class="view hidden" aria-live="polite">
         <div class="panel pitch-arcade-panel">
@@ -174,8 +226,8 @@
               <strong id="arcade-player-score">0</strong>
             </div>
             <div class="arcade-round">
-              <span id="arcade-round-label">Round 1 / 5</span>
-              <small id="arcade-status-text">Answer the LGS question to power up your shot!</small>
+              <span id="arcade-round-label">Round 1 / 6 • Penalty Kick</span>
+              <small id="arcade-status-text">Answer the LGS question to power up your play!</small>
             </div>
             <div class="team-score">
               <strong id="arcade-rival-score">0</strong>
@@ -186,7 +238,12 @@
           <div class="canvas-wrap">
             <canvas id="pitch-canvas" width="640" height="380" aria-label="Interactive 2D football pitch"></canvas>
             <div id="arcade-controls-hint" class="controls-hint hidden">
-              Move aim with <strong>Mouse / Touch</strong> or <strong>Arrow Keys</strong> • Press <strong>Space / Click Pitch</strong> to SHOOT!
+              <div id="arcade-hint-line">Aim with <strong>Mouse / Touch / Arrows</strong> • <strong>Click / Space</strong> to Kick!</div>
+              <div id="curve-controls" class="curve-controls hidden">
+                <button id="btn-curve-left" class="btn btn-ghost btn-sm curve-btn" type="button">↩ Curl Left (Q)</button>
+                <button id="btn-curve-zero" class="btn btn-ghost btn-sm curve-btn" type="button">⬆ Straight</button>
+                <button id="btn-curve-right" class="btn btn-ghost btn-sm curve-btn" type="button">↪ Curl Right (E)</button>
+              </div>
             </div>
           </div>
 
