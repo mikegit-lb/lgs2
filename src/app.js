@@ -4,6 +4,8 @@ import {
   TACTIC_BUILDERS,
   FILL_IN_BLANKS,
   MATCHING_ROUNDS,
+  TURKISH_TEAMS,
+  ARCADE_BONUS_QUESTIONS,
   MATCH_STAGES
 } from './matchData.js';
 import {
@@ -34,6 +36,7 @@ import {
   setCurve,
   movePlayerKeeper,
   diveKeeper,
+  moveDribbler,
   moveAim,
   stepKeeper,
   launchPass,
@@ -64,7 +67,12 @@ let sorterState = { index: 0, score: 0, answered: false };
 let builderState = { index: 0, score: 0, answered: false, pool: [], chosenIndices: [] };
 let fillState = { index: 0, score: 0, answered: false };
 let matchState = { roundIndex: 0, selectedLeftId: null, matchedIds: new Set(), rightOrder: [], wrongRightId: null };
-let arcadeState = createShootoutState(6);
+let selectedTeam = TURKISH_TEAMS[0];
+let rivalTeam = TURKISH_TEAMS[1];
+let cameraView = 'third_person'; // 'third_person' | 'first_person'
+const keysHeld = new Set();
+let pointerDragging = false;
+let arcadeState = createShootoutState(10);
 let arcadeQuestions = [];
 let arcadeRafId = null;
 let arcadeLastTs = 0;
@@ -140,7 +148,31 @@ function renderHud() {
   $('hud-stamina').textContent = '⚡'.repeat(state.stamina) + '·'.repeat(Math.max(0, 3 - state.stamina));
 }
 
+function selectTeamById(teamId) {
+  const chosen = TURKISH_TEAMS.find((t) => t.id === teamId) ?? TURKISH_TEAMS[0];
+  selectedTeam = chosen;
+  if (chosen.id === 'gs') rivalTeam = TURKISH_TEAMS.find((t) => t.id === 'fb') ?? TURKISH_TEAMS[1];
+  else if (chosen.id === 'fb') rivalTeam = TURKISH_TEAMS.find((t) => t.id === 'gs') ?? TURKISH_TEAMS[0];
+  else rivalTeam = TURKISH_TEAMS.find((t) => t.id !== chosen.id) ?? TURKISH_TEAMS[0];
+  renderTeamPicker();
+}
+
+function renderTeamPicker() {
+  const picker = $('team-picker');
+  if (!picker) return;
+  picker.innerHTML = '';
+  for (const team of TURKISH_TEAMS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `team-pill-btn ${team.id === selectedTeam.id ? 'is-selected' : ''}`;
+    btn.innerHTML = `<span class="team-swatch" style="background:${team.jersey};box-shadow:inset 0 0 0 3px ${team.accent}"></span>${team.name}`;
+    btn.addEventListener('click', () => selectTeamById(team.id));
+    picker.appendChild(btn);
+  }
+}
+
 function renderHub() {
+  renderTeamPicker();
   const prepEl = $('hub-prep');
   prepEl.innerHTML = '';
 
@@ -643,7 +675,7 @@ function advanceMatching() {
 }
 
 function pickArcadeQuestions(count) {
-  const all = MATCH_STAGES.flatMap((s) => s.questions);
+  const all = [...MATCH_STAGES.flatMap((s) => s.questions), ...ARCADE_BONUS_QUESTIONS];
   const copy = [...all];
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -667,18 +699,25 @@ function formatPlayType(playType) {
   if (playType === 'freekick') return '🌀 Free Kick (3-Man Wall)';
   if (playType === 'pass_play') return '🎯 Through-Ball Pass';
   if (playType === 'gk_save') return '🧤 Defend as Goalkeeper!';
+  if (playType === 'dribble_run') return '🏃 Dribble & Run Attack!';
   return '⚽ Penalty Kick';
 }
 
 function startArcadeMatch() {
-  arcadeQuestions = pickArcadeQuestions(8);
-  arcadeState = createShootoutState(8);
+  arcadeQuestions = pickArcadeQuestions(10);
+  arcadeState = createShootoutState(10);
   confetti = [];
+  keysHeld.clear();
   renderArcadeUI();
   showView('pitch');
   arcadeLastTs = performance.now();
   if (arcadeRafId !== null) cancelAnimationFrame(arcadeRafId);
   arcadeRafId = requestAnimationFrame(arcadeLoop);
+}
+
+function toggleCameraView() {
+  cameraView = cameraView === 'third_person' ? 'first_person' : 'third_person';
+  $('btn-camera-view').textContent = cameraView === 'first_person' ? '👁️ 1st Person (V)' : '🎥 3rd Person (V)';
 }
 
 function renderCurveButtons() {
@@ -688,9 +727,12 @@ function renderCurveButtons() {
 }
 
 function renderArcadeUI() {
+  $('arcade-player-team').textContent = selectedTeam.name;
+  $('arcade-rival-team').textContent = rivalTeam.name;
   $('arcade-player-score').textContent = String(arcadeState.playerScore);
   $('arcade-rival-score').textContent = String(arcadeState.rivalScore);
   $('arcade-round-label').textContent = `Round ${arcadeState.round} / ${arcadeState.totalRounds} • ${formatPlayType(arcadeState.playType)}`;
+  $('btn-camera-view').textContent = cameraView === 'first_person' ? '👁️ 1st Person (V)' : '🎥 3rd Person (V)';
 
   const qBox = $('arcade-question-box');
   const hintBar = $('arcade-controls-hint');
@@ -724,6 +766,13 @@ function renderArcadeUI() {
       btn.addEventListener('click', () => handleArcadeAnswer(idx));
       optsEl.appendChild(btn);
     });
+  } else if (arcadeState.phase === 'dribble') {
+    $('arcade-status-text').textContent = '🏃 DRIBBLE RUN! Weave past all 3 defenders into the green box!';
+    $('arcade-hint-line').innerHTML = 'Run with <strong>W A S D / Arrow Keys</strong> or <strong>Drag on Pitch</strong> to beat the defenders!';
+    qBox.classList.add('hidden');
+    hintBar.classList.remove('hidden');
+    curveBar.classList.add('hidden');
+    resBar.classList.add('hidden');
   } else if (arcadeState.phase === 'pass' || arcadeState.phase === 'passing') {
     $('arcade-status-text').textContent = '🎯 STEP 1: Pass past the 2 defenders to your teammate!';
     $('arcade-hint-line').innerHTML = 'Aim at your <strong>blue Striker teammate</strong> • <strong>Click / Space</strong> to PASS!';
@@ -764,8 +813,10 @@ function renderArcadeUI() {
       : arcadeState.lastOutcome === 'gk_saved'
         ? '🧤 WORLD-CLASS SAVE! You denied Rival FC!'
         : arcadeState.lastOutcome === 'conceded'
-          ? '⚽ RIVAL GOAL! The striker beat your dive!'
-          : arcadeState.lastOutcome === 'intercepted'
+          ? `⚽ ${rivalTeam.name.toUpperCase()} GOAL! The striker beat your dive!`
+          : arcadeState.lastOutcome === 'tackled'
+            ? '💥 TACKLED! The defender stole the ball on your run!'
+            : arcadeState.lastOutcome === 'intercepted'
             ? 'INTERCEPTED! The defender cut off your pass!'
             : arcadeState.lastOutcome === 'blocked'
               ? 'BLOCKED by the Defender Wall!'
@@ -792,10 +843,10 @@ function renderArcadeUI() {
     const draw = arcadeState.playerScore === arcadeState.rivalScore;
     resBar.classList.add(won || draw ? 'is-correct' : 'is-wrong');
     $('arcade-result-title').textContent = won
-      ? `🏆 FULL TIME: Anatolia United Wins ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
+      ? `🏆 FULL TIME: ${selectedTeam.name} Wins ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
       : draw
-        ? `🤝 FULL TIME: Draw ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
-        : `⚽ FULL TIME: Rival FC Wins ${arcadeState.rivalScore}-${arcadeState.playerScore}`;
+        ? `🤝 FULL TIME: Derby Draw ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
+        : `⚽ FULL TIME: ${rivalTeam.name} Wins ${arcadeState.rivalScore}-${arcadeState.playerScore}`;
     $('arcade-result-desc').textContent = 'Play again or return to the Locker Room for more drills.';
     $('btn-arcade-next').textContent = 'Play Again';
   }
@@ -971,10 +1022,14 @@ function drawPitch() {
   // Stadium LED ad board
   ctx.fillStyle = '#1e293b';
   ctx.fillRect(0, GOAL_LINE_Y - 18, PITCH_WIDTH, 18);
-  ctx.fillStyle = '#facc15';
+  ctx.fillStyle = selectedTeam.accent;
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('LGS CHAMPIONS CUP 2026   •   ANATOLIA UNITED   •   FAIR PLAY   •   MATCHDAY LIVE', PENALTY_X, GOAL_LINE_Y - 6);
+  ctx.fillText(
+    `SÜPER LİG DERBY   •   ${selectedTeam.name.toUpperCase()} vs ${rivalTeam.name.toUpperCase()}   •   LGS CUP 2026`,
+    PENALTY_X,
+    GOAL_LINE_Y - 6
+  );
 
   // Dual stadium floodlight beams
   for (const fx of [110, 530]) {
@@ -1085,9 +1140,19 @@ function drawPitch() {
     isPlayerGk
   );
 
-  // Moving Defenders (3-man wall or midfielders)
+  // Shooting box highlight during dribble_run
+  if (arcadeState.phase === 'dribble') {
+    ctx.fillStyle = 'rgba(74, 222, 128, 0.22)';
+    ctx.fillRect(140, GOAL_LINE_Y, 360, 91);
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⬆ DRIBBLE INTO THIS SHOOTING ZONE! ⬆', PENALTY_X, 198);
+  }
+
+  // Moving Defenders (Rival Turkish club colors!)
   arcadeState.defenders.forEach((def, idx) => {
-    drawPlayerSprite(ctx, def.x, def.y, '#dc2626', '#7f1d1d', 4 + idx, t * 8 + idx);
+    drawPlayerSprite(ctx, def.x, def.y, rivalTeam.jersey, rivalTeam.shorts, 4 + idx, t * 8 + idx);
   });
 
   // Teammate striker during pass_play
@@ -1101,15 +1166,15 @@ function drawPitch() {
     ctx.arc(mx, my - 10, 26, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    drawPlayerSprite(ctx, mx, my, '#0284c7', '#0f172a', 9, t * 10);
+    drawPlayerSprite(ctx, mx, my, selectedTeam.jersey, selectedTeam.shorts, 9, t * 10);
   }
 
-  // Kicker (Blue Anatolia striker on attack, Red Rival striker running up on GK defense!)
+  // Kicker (Selected Turkish team on attack, Rival striker running up on GK defense!)
   if (isPlayerGk) {
     const runupY = PENALTY_Y + 20 + (arcadeState.gkRunup || 0) * 45;
-    drawPlayerSprite(ctx, PENALTY_X, runupY, '#dc2626', '#7f1d1d', 10, t * 12);
+    drawPlayerSprite(ctx, PENALTY_X, runupY, rivalTeam.jersey, rivalTeam.shorts, 10, t * 12);
   } else {
-    drawPlayerSprite(ctx, arcadeState.startX, arcadeState.startY + 26, '#0284c7', '#0f172a', 10, t * 4);
+    drawPlayerSprite(ctx, arcadeState.startX, arcadeState.startY + 26, selectedTeam.jersey, selectedTeam.shorts, 10, t * 6);
   }
 
   // Dotted curved flight preview during 'aim' or 'pass'
@@ -1219,16 +1284,257 @@ function drawPitch() {
   }
 }
 
+function drawPitchFirstPerson() {
+  const canvas = $('pitch-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const t = arcadeState.animTime || 0;
+  const isPlayerGk = arcadeState.playType === 'gk_save';
+
+  // Night stadium sky & glowing floodlights
+  const sky = ctx.createLinearGradient(0, 0, 0, 155);
+  sky.addColorStop(0, '#020617');
+  sky.addColorStop(1, '#1e293b');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, PITCH_WIDTH, 155);
+
+  // Stadium stands + cheering crowd
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 75, PITCH_WIDTH, 75);
+  const crowdColors = [selectedTeam.jersey, selectedTeam.accent, rivalTeam.jersey, '#ffffff', '#38bdf8'];
+  for (let row = 0; row < 4; row += 1) {
+    for (let cx = 10; cx < PITCH_WIDTH; cx += 18) {
+      const bounce = arcadeState.lastOutcome === 'goal' || arcadeState.lastOutcome === 'gk_saved' ? Math.sin(t * 16 + cx) * 3 : 0;
+      ctx.fillStyle = crowdColors[(cx + row * 5) % crowdColors.length];
+      ctx.beginPath();
+      ctx.arc(cx, 84 + row * 14 + bounce, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Horizon perspective pitch turf
+  for (let i = 0; i < 6; i += 1) {
+    const y0 = 150 + i * 39;
+    ctx.fillStyle = i % 2 === 0 ? '#16a34a' : '#15803d';
+    ctx.fillRect(0, y0, PITCH_WIDTH, 40);
+  }
+
+  // Perspective pitch lines converging toward horizon
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 150);
+  ctx.lineTo(PITCH_WIDTH, 150);
+  ctx.moveTo(150, 150);
+  ctx.lineTo(20, PITCH_HEIGHT);
+  ctx.moveTo(490, 150);
+  ctx.lineTo(620, PITCH_HEIGHT);
+  ctx.stroke();
+
+  if (isPlayerGk) {
+    // FIRST-PERSON GOALKEEPER VIEW: Looking OUT from inside the goal!
+    const camShift = (PENALTY_X - arcadeState.keeperX) * 0.7;
+
+    // Rival striker running straight toward camera
+    const strikerDist = Math.max(0.2, 1 - (arcadeState.gkRunup || 0) * 0.6);
+    const strikerX = PENALTY_X + camShift;
+    const strikerY = 175 + strikerDist * 45;
+    ctx.save();
+    ctx.translate(strikerX, strikerY);
+    ctx.scale(1.1 + strikerDist * 0.4, 1.1 + strikerDist * 0.4);
+    drawPlayerSprite(ctx, 0, 0, rivalTeam.jersey, rivalTeam.shorts, 10, t * 12);
+    ctx.restore();
+
+    // Incoming soccer ball growing HUGE as it flies toward your gloves!
+    const progress = arcadeState.gkShotFired
+      ? Math.max(0, Math.min(1, (PENALTY_Y - arcadeState.ballY) / (PENALTY_Y - GOAL_LINE_Y)))
+      : 0;
+    const bx = PENALTY_X + (arcadeState.ballX - PENALTY_X) * (0.4 + progress * 1.1) + camShift;
+    const by = 205 + progress * 115 - Math.sin(progress * Math.PI) * 55;
+    const br = 9 + progress * 24;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Giant foreground Goalkeeper Gloves!
+    const diveOffsetX = arcadeState.keeperDiveDir * (arcadeState.keeperDiveTimer > 0 ? 110 : 0);
+    const diveOffsetY = arcadeState.keeperDiveTimer > 0 ? -45 : 0;
+    for (const side of [-1, 1]) {
+      const gx = PENALTY_X + side * 88 + diveOffsetX;
+      const gy = 322 + diveOffsetY + Math.sin(t * 4) * 4;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(gx - 28, gy - 34, 56, 62, 16);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(selectedTeam.short, gx, gy + 4);
+    }
+
+    // FPV HUD badge
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+    ctx.fillRect(14, 14, 210, 30);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('👁️ FPV GOALKEEPER CAM', 24, 33);
+  } else {
+    // FIRST-PERSON STRIKER VIEW: Looming giant goal ahead + perspective defenders + boots at bottom!
+    const camShift = (PENALTY_X - arcadeState.startX) * 0.45;
+    const gLeft = 90 + camShift;
+    const gRight = 550 + camShift;
+    const gTop = 58;
+    const gBottom = 165;
+
+    // Giant perspective goal net
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.fillRect(gLeft, gTop, gRight - gLeft, gBottom - gTop);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1;
+    for (let nx = gLeft + 20; nx < gRight; nx += 20) {
+      ctx.beginPath();
+      ctx.moveTo(nx, gTop);
+      ctx.lineTo(nx, gBottom);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(gLeft, gBottom);
+    ctx.lineTo(gLeft, gTop);
+    ctx.lineTo(gRight, gTop);
+    ctx.lineTo(gRight, gBottom);
+    ctx.stroke();
+
+    // Goalkeeper scaled up in FPV
+    const kx = gLeft + ((arcadeState.keeperX - GOAL_LEFT) / (GOAL_RIGHT - GOAL_LEFT)) * (gRight - gLeft);
+    ctx.save();
+    ctx.translate(kx, gBottom + 4);
+    ctx.scale(1.35, 1.35);
+    drawGoalkeeperSprite(ctx, 0, 0, arcadeState.keeperWidth, arcadeState.keeperDiveDir, false);
+    ctx.restore();
+
+    // Defenders looming in perspective
+    arcadeState.defenders.forEach((def, idx) => {
+      const depth = Math.max(0, Math.min(1, (def.y - GOAL_LINE_Y) / (PENALTY_Y - GOAL_LINE_Y)));
+      const dy = gBottom + 20 + depth * 125;
+      const dx = PENALTY_X + (def.x - PENALTY_X) * (1 + depth * 0.4) + camShift;
+      const scale = 1.0 + depth * 0.75;
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.scale(scale, scale);
+      drawPlayerSprite(ctx, 0, 0, rivalTeam.jersey, rivalTeam.shorts, 4 + idx, t * 8 + idx);
+      ctx.restore();
+    });
+
+    // Aim reticle in FPV
+    if (arcadeState.phase === 'aim' || arcadeState.phase === 'pass') {
+      const rx = gLeft + ((arcadeState.aimX - GOAL_LEFT) / (GOAL_RIGHT - GOAL_LEFT)) * (gRight - gLeft);
+      const ry = gTop + ((arcadeState.aimY - GOAL_TOP) / (GOAL_LINE_Y - GOAL_TOP)) * (gBottom - gTop);
+      ctx.strokeStyle = arcadeState.superShot ? '#facc15' : '#f87171';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(rx, ry, 18, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Power Meter in FPV
+    if (arcadeState.phase === 'aim') {
+      const barX = 584;
+      const barY = 175;
+      const barW = 24;
+      const barH = 150;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fillRect(barX - 4, barY - 22, barW + 8, barH + 30);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('PWR', barX + barW / 2, barY - 7);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(barX, barY, barW, barH * 0.14);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(barX, barY + barH * 0.14, barW, barH * 0.51);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(barX, barY + barH * 0.65, barW, barH * 0.35);
+      const markerY = barY + (1 - arcadeState.power) * barH;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(barX - 4, markerY - 3, barW + 8, 6);
+    }
+
+    // Ball in FPV (starts big at your boots, shrinks into the goal!)
+    const prog = arcadeState.phase === 'flying'
+      ? Math.max(0, Math.min(1, (arcadeState.startY - arcadeState.ballY) / (arcadeState.startY - GOAL_LINE_Y)))
+      : 0;
+    const bx = PENALTY_X + (arcadeState.ballX - PENALTY_X) * (1.2 - prog * 0.2) + camShift;
+    const by = 335 - prog * 225 - Math.sin(prog * Math.PI) * 45;
+    const br = Math.max(10, 26 - prog * 15);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Striker boots in bottom foreground
+    ctx.fillStyle = selectedTeam.jersey;
+    ctx.beginPath();
+    ctx.roundRect(PENALTY_X - 75, 348, 42, 34, 12);
+    ctx.roundRect(PENALTY_X + 33, 348, 42, 34, 12);
+    ctx.fill();
+
+    // FPV HUD badge
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+    ctx.fillRect(14, 14, 190, 30);
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`👁️ FPV ${selectedTeam.short} STRIKER`, 24, 33);
+  }
+
+  // Confetti
+  for (const p of confetti) {
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 8, 8);
+  }
+}
+
 function arcadeLoop(now) {
   if (activeView !== 'pitch') return;
   const dt = Math.min(0.05, (now - arcadeLastTs) / 1000);
   arcadeLastTs = now;
 
   const prevPhase = arcadeState.phase;
+
+  // Smooth continuous running/dribbling when WASD or Arrow keys are held
+  if (arcadeState.phase === 'dribble') {
+    const runSpeed = arcadeState.superShot ? 210 : 165;
+    let dx = 0;
+    let dy = 0;
+    if (keysHeld.has('ArrowLeft') || keysHeld.has('a') || keysHeld.has('A')) dx -= runSpeed * dt;
+    if (keysHeld.has('ArrowRight') || keysHeld.has('d') || keysHeld.has('D')) dx += runSpeed * dt;
+    if (keysHeld.has('ArrowUp') || keysHeld.has('w') || keysHeld.has('W')) dy -= runSpeed * dt;
+    if (keysHeld.has('ArrowDown') || keysHeld.has('s') || keysHeld.has('S')) dy += runSpeed * dt;
+    if (dx !== 0 || dy !== 0) {
+      arcadeState = moveDribbler(arcadeState, dx, dy);
+    }
+  }
+
   arcadeState = stepKeeper(arcadeState, dt);
   arcadeState = stepBall(arcadeState, dt);
 
-  if ((prevPhase === 'flying' || prevPhase === 'passing' || prevPhase === 'gk_incoming') && arcadeState.phase === 'result') {
+  if ((prevPhase === 'dribble' || prevPhase === 'flying' || prevPhase === 'passing' || prevPhase === 'gk_incoming') && arcadeState.phase === 'result') {
     if (arcadeState.lastOutcome === 'goal' || arcadeState.lastOutcome === 'gk_saved') {
       const bonus = arcadeState.lastOutcome === 'gk_saved' ? 40 : 35;
       state = { ...state, totalXp: state.totalXp + bonus };
@@ -1240,7 +1546,7 @@ function arcadeLoop(now) {
       playSound('foul');
     }
     renderArcadeUI();
-  } else if (prevPhase === 'passing' && arcadeState.phase === 'aim') {
+  } else if ((prevPhase === 'passing' || prevPhase === 'dribble') && arcadeState.phase === 'aim') {
     playSound('goal');
     renderArcadeUI();
   }
@@ -1255,7 +1561,11 @@ function arcadeLoop(now) {
     }))
     .filter((p) => p.life > 0);
 
-  drawPitch();
+  if (cameraView === 'first_person') {
+    drawPitchFirstPerson();
+  } else {
+    drawPitch();
+  }
   arcadeRafId = requestAnimationFrame(arcadeLoop);
 }
 
@@ -1426,6 +1736,7 @@ $('btn-sound').addEventListener('click', () => {
 $('btn-home').addEventListener('click', renderHub);
 $('btn-play-arcade').addEventListener('click', startArcadeMatch);
 $('btn-arcade-next').addEventListener('click', handleArcadeAdvance);
+$('btn-camera-view').addEventListener('click', toggleCameraView);
 $('btn-fill-check').addEventListener('click', submitFill);
 $('btn-fill-next').addEventListener('click', advanceFill);
 $('btn-match-next').addEventListener('click', advanceMatching);
@@ -1460,15 +1771,29 @@ if (pitchCanvas) {
   };
 
   pitchCanvas.addEventListener('pointermove', (e) => {
+    const rect = pitchCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * PITCH_WIDTH;
+    const y = ((e.clientY - rect.top) / rect.height) * PITCH_HEIGHT;
     if (arcadeState.phase === 'gk_incoming') {
-      const rect = pitchCanvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * PITCH_WIDTH;
       arcadeState = movePlayerKeeper(arcadeState, x);
+      return;
+    }
+    if (arcadeState.phase === 'dribble' && pointerDragging) {
+      arcadeState = moveDribbler(arcadeState, (x - arcadeState.ballX) * 0.22, (y - arcadeState.ballY) * 0.22);
+      if (arcadeState.phase !== 'dribble') {
+        pointerDragging = false;
+        renderArcadeUI();
+      }
       return;
     }
     updateAimFromPointer(e.clientX, e.clientY);
   });
+  pitchCanvas.addEventListener('pointerup', () => { pointerDragging = false; });
   pitchCanvas.addEventListener('pointerdown', (e) => {
+    if (arcadeState.phase === 'dribble') {
+      pointerDragging = true;
+      return;
+    }
     if (arcadeState.phase === 'gk_incoming') {
       const rect = pitchCanvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * PITCH_WIDTH;
@@ -1543,6 +1868,17 @@ document.addEventListener('keydown', (event) => {
       else advanceFill();
     }
   } else if (activeView === 'pitch') {
+    keysHeld.add(event.key);
+    if (event.key === 'v' || event.key === 'V') {
+      toggleCameraView();
+      return;
+    }
+    if (arcadeState.phase === 'dribble') {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (arcadeState.phase === 'question' && ['1', '2', '3', '4'].includes(event.key)) {
       handleArcadeAnswer(Number(event.key) - 1);
     } else if (arcadeState.phase === 'gk_incoming') {
@@ -1578,6 +1914,10 @@ document.addEventListener('keydown', (event) => {
       handleArcadeAdvance();
     }
   }
+});
+
+document.addEventListener('keyup', (event) => {
+  keysHeld.delete(event.key);
 });
 
 renderHub();

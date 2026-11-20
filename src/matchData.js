@@ -261,6 +261,231 @@ export const MATCHING_ROUNDS = [
   }
 ];
 
+export const TURKISH_TEAMS = [
+  { id: 'gs', name: 'Galatasaray', short: 'GS', jersey: '#dc2626', accent: '#facc15', shorts: '#ffffff' },
+  { id: 'fb', name: 'Fenerbahçe', short: 'FB', jersey: '#facc15', accent: '#1e3a8a', shorts: '#1e3a8a' },
+  { id: 'bjk', name: 'Beşiktaş', short: 'BJK', jersey: '#111827', accent: '#f8fafc', shorts: '#111827' },
+  { id: 'ts', name: 'Trabzonspor', short: 'TS', jersey: '#881337', accent: '#38bdf8', shorts: '#38bdf8' },
+  { id: 'bfk', name: 'Başakşehir', short: 'BFK', jersey: '#f97316', accent: '#1e3a8a', shorts: '#1e3a8a' },
+  { id: 'sam', name: 'Samsunspor', short: 'SAM', jersey: '#dc2626', accent: '#ffffff', shorts: '#ffffff' }
+];
+
+export const ARCADE_BONUS_QUESTIONS = [
+  {
+    id: 'ab-1',
+    type: 'choice',
+    prompt: 'The derby fans in Istanbul ____ their team\'s scarf to every home game.',
+    options: ['wear', 'wears', 'are wearing', 'wearing'],
+    correctIndex: 0,
+    explanation: '"Every home game" is a habit; plural "The derby fans" takes base verb "wear".'
+  },
+  {
+    id: 'ab-2',
+    type: 'choice',
+    prompt: 'Look at the replay! The midfielder ____ a brilliant through-ball pass right now!',
+    options: ['makes', 'make', 'is making', 'are making'],
+    correctIndex: 2,
+    explanation: '"Look!" + "right now" signals Present Continuous -> "is making" (drop silent -e).'
+  },
+  {
+    id: 'ab-3',
+    type: 'dialogue',
+    context: 'Commentator: Does the Turkish goalkeeper usually dive to the left?\nAnalyst: Yes, he ____! He saves most penalties on that side.',
+    prompt: 'Choose the correct short answer.',
+    options: ['do', 'is', 'does', 'dives'],
+    correctIndex: 2,
+    explanation: 'Questions with "Does" take the short affirmative answer "Yes, he does."'
+  },
+  {
+    id: 'ab-4',
+    type: 'choice',
+    prompt: 'Right now, three defenders ____ a wall in front of the free-kick spot.',
+    options: ['build', 'builds', 'are building', 'is building'],
+    correctIndex: 2,
+    explanation: '"Right now" + plural "three defenders" -> "are building".'
+  },
+  {
+    id: 'ab-5',
+    type: 'choice',
+    prompt: 'Our coach ____ that teamwork is more important than individual tricks.',
+    options: ['is believing', 'believes', 'believe', 'are believing'],
+    correctIndex: 1,
+    explanation: '"Believe" is a stative verb (no -ing); singular "Our coach" takes "believes".'
+  },
+  {
+    id: 'ab-6',
+    type: 'spot_error',
+    context: 'Match Report:\n"Every Sunday, our left winger carrys the ball 60 meters up the touchline."',
+    prompt: 'Which fix corrects the spelling error?',
+    options: ['carrys -> carries', 'carrys -> carry', 'carrys -> is carrying', 'carrys -> carryes'],
+    correctIndex: 0,
+    explanation: 'Consonant + y (carry) drops -y and adds -ies -> "carries".'
+  },
+  {
+    id: 'ab-7',
+    type: 'dialogue',
+    context: 'Striker: Why ____ the referee ____ a yellow card right now?\nCaptain: Because their defender pulled your shirt!',
+    prompt: 'Complete the Striker\'s question.',
+    options: ['does / show', 'is / showing', 'are / showing', 'is / show'],
+    correctIndex: 1,
+    explanation: '"Right now" + singular "the referee" requires "is / showing".'
+  },
+  {
+    id: 'ab-8',
+    type: 'choice',
+    prompt: 'Our academy squad ____ on grass normally, but today we ____ on artificial turf.',
+    options: ['trains / are playing', 'is training / play', 'train / are playing', 'trains / play'],
+    correctIndex: 0,
+    explanation: '"Normally" habit (trains) contrasted with "today" temporary action (are playing).'
+  },
+  {
+    id: 'ab-9',
+    type: 'choice',
+    prompt: '____ your favorite Süper Lig club ____ in Europe this season?',
+    options: ['Do / compete', 'Does / competes', 'Is / competing', 'Are / competing'],
+    correctIndex: 2,
+    explanation: '"This season" (ongoing temporary period) + singular club -> "Is / competing".'
+  },
+  {
+    id: 'ab-10',
+    type: 'choice',
+    prompt: 'My little brother ____ football cards, and he currently ____ over 200 of them.',
+    options: ['collects / has', 'is collecting / is having', 'collect / has', 'collects / is having'],
+    correctIndex: 0,
+    explanation: 'General hobby ("collects") + stative possession ("has", never "is having").'
+  },
+  {
+    id: 'ab-11',
+    type: 'dialogue',
+    context: 'Mom: Turn down the TV, Kerem!\nKerem: Wait a second, Mom! Our keeper ____ a crucial penalty right now!',
+    prompt: 'Complete Kerem\'s reply.',
+    options: ['faces', 'face', 'is facing', 'facing'],
+    correctIndex: 2,
+    explanation: '"Right now" + singular "Our keeper" -> "is facing" (drop silent -e).'
+  },
+  {
+    id: 'ab-12',
+    type: 'choice',
+    prompt: 'The stadium lights always ____ on automatically at sunset.',
+    options: ['turn', 'turns', 'are turning', 'turning'],
+    correctIndex: 0,
+    explanation: '"Always" habit + plural "The stadium lights" -> "turn".'
+  },
+  {
+    id: 'ab-13',
+    type: 'choice',
+    prompt: 'Listen! The coach ____ tactical instructions from the sideline!',
+    options: ['shouts', 'shout', 'is shouting', 'are shouting'],
+    correctIndex: 2,
+    explanation: '"Listen!" signals an action happening right now -> "is shouting".'
+  },
+  {
+    id: 'ab-14',
+    type: 'choice',
+    prompt: 'Our team ____ any matches at home this year; our defense is super strong!',
+    options: ['doesn\'t lose', 'don\'t lose', 'isn\'t losing', 'not loses'],
+    correctIndex: 0,
+    explanation: 'General/habitual record with singular "Our team" -> "doesn\'t lose".'
+  },
+  {
+    id: 'ab-15',
+    type: 'spot_error',
+    context: 'Live Commentary:\n"Minute 78: The defender is runing back quickly to stop the counter-attack!"',
+    prompt: 'Choose the correct spelling fix.',
+    options: ['runing -> runs', 'runing -> running', 'runing -> run', 'runing -> runeing'],
+    correctIndex: 1,
+    explanation: 'CVC verb "run" doubles the final "n" before -ing -> "running".'
+  },
+  {
+    id: 'ab-16',
+    type: 'dialogue',
+    context: 'Scout: What ____ you ____ of our new goalkeeper?\nCoach: I think he has amazing reflexes!',
+    prompt: 'Choose the stative verb question form for asking an opinion.',
+    options: ['are / thinking', 'do / think', 'does / think', 'are / think'],
+    correctIndex: 1,
+    explanation: '"Think" meaning "have an opinion" is stative -> "What do you think...?"'
+  },
+  {
+    id: 'ab-17',
+    type: 'choice',
+    prompt: 'The captain never ____ up, even when the team is losing 2-0.',
+    options: ['give', 'gives', 'is giving', 'giving'],
+    correctIndex: 1,
+    explanation: '"Never" + singular "The captain" takes Present Simple "gives".'
+  },
+  {
+    id: 'ab-18',
+    type: 'choice',
+    prompt: 'Look! The ball ____ around the three-man wall into the top corner!',
+    options: ['curves', 'curve', 'is curving', 'curving'],
+    correctIndex: 2,
+    explanation: '"Look!" signals live flight right now -> "is curving" (drop silent -e).'
+  },
+  {
+    id: 'ab-19',
+    type: 'table',
+    context: 'DERBY TRAINING STATS\n• Arda: Usually shoots with left foot | Today: Practicing right-foot volleys.\n• Can: Usually defends | Today: Practicing penalties.',
+    prompt: 'Which sentence matches the table?',
+    options: [
+      'Arda never uses his left foot.',
+      'Can is practicing penalties today.',
+      'Arda is defending the goal today.',
+      'Can usually practices right-foot volleys.'
+    ],
+    correctIndex: 1,
+    explanation: 'The table explicitly shows Can\'s today focus is practicing penalties.'
+  },
+  {
+    id: 'ab-20',
+    type: 'choice',
+    prompt: 'We ____ extra stamina drills this month because the finals start soon.',
+    options: ['do', 'does', 'are doing', 'is doing'],
+    correctIndex: 2,
+    explanation: '"This month" signals a temporary training routine -> "are doing".'
+  },
+  {
+    id: 'ab-21',
+    type: 'dialogue',
+    context: 'Fan 1: Why aren\'t the players leaving the pitch?\nFan 2: Because they ____ the fans in the stands right now!',
+    prompt: 'Complete Fan 2\'s answer.',
+    options: ['applaud', 'applauds', 'are applauding', 'is applauding'],
+    correctIndex: 2,
+    explanation: '"Right now" + plural "they" -> "are applauding".'
+  },
+  {
+    id: 'ab-22',
+    type: 'choice',
+    prompt: 'A football match ____ 90 minutes, plus stoppage time.',
+    options: ['last', 'lasts', 'is lasting', 'lasting'],
+    correctIndex: 1,
+    explanation: 'Permanent sport rule/fact with singular "A football match" -> "lasts".'
+  },
+  {
+    id: 'ab-23',
+    type: 'choice',
+    prompt: 'Right now, our defenders ____ the striker closely so he can\'t shoot.',
+    options: ['mark', 'marks', 'are marking', 'is marking'],
+    correctIndex: 2,
+    explanation: '"Right now" + plural "our defenders" -> "are marking".'
+  },
+  {
+    id: 'ab-24',
+    type: 'choice',
+    prompt: '____ the fans ____ the team\'s new jersey this season?',
+    options: ['Are / liking', 'Do / like', 'Does / like', 'Is / liking'],
+    correctIndex: 1,
+    explanation: '"Like" is a stative verb; plural "the fans" takes "Do / like".'
+  },
+  {
+    id: 'ab-25',
+    type: 'choice',
+    prompt: 'Watch the goalkeeper! He ____ across the goal line to make a fingertip save!',
+    options: ['dives', 'dive', 'is diving', 'are diving'],
+    correctIndex: 2,
+    explanation: '"Watch!" signals live action happening right now -> "is diving" (drop silent -e).'
+  }
+];
+
 export const MATCH_STAGES = [
   {
     id: 'stage-1',

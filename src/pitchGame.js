@@ -15,11 +15,12 @@ export const PENALTY_X = 320;
 export const PENALTY_Y = 315;
 
 export function getPlayTypeForRound(round) {
-  const mod = (round - 1) % 4;
+  const mod = (round - 1) % 5;
   if (mod === 0) return 'penalty';
   if (mod === 1) return 'freekick';
   if (mod === 2) return 'pass_play';
-  return 'gk_save';
+  if (mod === 3) return 'gk_save';
+  return 'dribble_run';
 }
 
 function buildScenario(playType, round, isCorrect) {
@@ -91,6 +92,27 @@ function buildScenario(playType, round, isCorrect) {
     };
   }
 
+  if (playType === 'dribble_run') {
+    return {
+      phase: 'dribble',
+      startX: PENALTY_X,
+      startY: 348,
+      keeperSpeed,
+      keeperX: PENALTY_X,
+      teammateX: null,
+      teammateY: null,
+      teammateDir: 1,
+      defenders: [
+        { x: 220, y: 295, width: 38, dir: 1, speed: baseDefSpeed * 0.95 },
+        { x: 410, y: 262, width: 38, dir: -1, speed: baseDefSpeed },
+        { x: 300, y: 228, width: 38, dir: 1, speed: baseDefSpeed * 0.85 }
+      ],
+      rivalTargetX: PENALTY_X,
+      rivalTargetY: 82,
+      gkRunup: 0
+    };
+  }
+
   // Default: penalty kick
   return {
     phase: 'aim',
@@ -108,7 +130,7 @@ function buildScenario(playType, round, isCorrect) {
   };
 }
 
-export function createShootoutState(totalRounds = 8) {
+export function createShootoutState(totalRounds = 10) {
   return {
     round: 1,
     totalRounds,
@@ -214,6 +236,55 @@ export function diveKeeper(state, dir = 0) {
   };
 }
 
+export function moveDribbler(state, dx, dy) {
+  if (state.phase !== 'dribble') return state;
+  const nextX = Math.max(115, Math.min(525, state.ballX + dx));
+  const nextY = Math.max(198, Math.min(354, state.ballY + dy));
+
+  // Check if tackled by any defender
+  for (const def of state.defenders) {
+    const closeX = Math.abs(nextX - def.x) <= def.width / 2 + 12;
+    const closeY = Math.abs(nextY - def.y) <= 18;
+    if (closeX && closeY) {
+      const rivalScored = !state.superShot || state.round % 2 === 0;
+      return {
+        ...state,
+        startX: nextX,
+        startY: nextY,
+        ballX: nextX,
+        ballY: nextY,
+        phase: 'result',
+        lastOutcome: 'tackled',
+        rivalScore: rivalScored ? state.rivalScore + 1 : state.rivalScore
+      };
+    }
+  }
+
+  // Reached shooting zone inside the box!
+  if (nextY <= 215) {
+    return {
+      ...state,
+      startX: nextX,
+      startY: nextY,
+      ballX: nextX,
+      ballY: nextY,
+      aimX: PENALTY_X,
+      aimY: 82,
+      defenders: [],
+      phase: 'aim'
+    };
+  }
+
+  return {
+    ...state,
+    startX: nextX,
+    startY: nextY,
+    ballX: nextX,
+    ballY: nextY,
+    ballSpin: state.ballSpin + Math.hypot(dx, dy) * 0.08
+  };
+}
+
 export function moveAim(state, dx, dy) {
   if (state.phase !== 'aim' && state.phase !== 'pass') return state;
   const minY = state.phase === 'pass' ? 190 : GOAL_TOP - 10;
@@ -238,7 +309,7 @@ export function stepKeeper(state, dt) {
     };
   }
 
-  if (!['pass', 'passing', 'aim', 'flying'].includes(state.phase)) {
+  if (!['dribble', 'pass', 'passing', 'aim', 'flying'].includes(state.phase)) {
     return { ...state, animTime: nextAnim, netRipple: nextRipple };
   }
 

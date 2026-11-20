@@ -811,3 +811,40 @@ body {
   border-color: var(--danger);
   background: var(--danger-bg);
 }
+
+.team-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.team-pill-btn {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: rgba(15, 23, 42, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-pill-btn.is-selected {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #facc15;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.5);
+}
+
+.team-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.35);
+  display: inline-block;
+}

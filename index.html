@@ -48,12 +48,13 @@
       <section id="view-hub" class="view">
         <div class="pitch-banner">
           <div>
-            <span class="eyebrow">90-Minute Matchday Plan • 54 Challenges</span>
-            <h2>Lead Anatolia United to the LGS Cup!</h2>
-            <p>Play the live 2D Penalty Shootout powered by LGS English questions, warm up in the Locker Room, and clear all 4 Match Quarters.</p>
+            <span class="eyebrow">90-Minute Matchday Plan • 89 Interactive Challenges</span>
+            <h2>Lead Your Turkish Club to the LGS Cup!</h2>
+            <p>Pick your Süper Lig team below, then play the 10-Round Live Match (3rd-Person or First-Person View: Dribbling, Passing, Curve Free Kicks, Penalties &amp; Goalkeeping!).</p>
+            <div id="team-picker" class="team-picker" role="group" aria-label="Choose your Turkish team"></div>
           </div>
           <div class="banner-actions">
-            <button id="btn-play-arcade" class="btn btn-var" type="button">⚽ Play Live 2D Match</button>
+            <button id="btn-play-arcade" class="btn btn-var" type="button">⚽ Play Live Match (10 Rounds)</button>
             <button id="btn-reset-progress" class="btn btn-ghost btn-sm" type="button">Reset Season</button>
           </div>
         </div>
@@ -222,16 +223,17 @@
         <div class="panel pitch-arcade-panel">
           <div class="arcade-scoreboard">
             <div class="team-score">
-              <span class="pill pill-pitch">Anatolia United</span>
+              <span id="arcade-player-team" class="pill pill-pitch">Galatasaray</span>
               <strong id="arcade-player-score">0</strong>
             </div>
             <div class="arcade-round">
-              <span id="arcade-round-label">Round 1 / 6 • Penalty Kick</span>
+              <span id="arcade-round-label">Round 1 / 10 • Penalty Kick</span>
               <small id="arcade-status-text">Answer the LGS question to power up your play!</small>
             </div>
             <div class="team-score">
               <strong id="arcade-rival-score">0</strong>
-              <span class="pill pill-gold">Rival FC</span>
+              <span id="arcade-rival-team" class="pill pill-gold">Fenerbahçe</span>
+              <button id="btn-camera-view" class="btn btn-ghost btn-sm curve-btn" type="button">🎥 3rd Person (V)</button>
             </div>
           </div>
 
