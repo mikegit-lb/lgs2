@@ -513,13 +513,15 @@ function renderArcadeUI() {
     const isGoal = arcadeState.lastOutcome === 'goal';
     resBar.classList.add(isGoal ? 'is-correct' : 'is-wrong');
     $('arcade-result-title').textContent = isGoal
-      ? 'GOOOAL! What a strike!'
-      : arcadeState.lastOutcome === 'saved'
-        ? 'SAVED by the Goalkeeper!'
-        : 'WIDE! Missed the goal!';
+      ? 'GOOOAL! Top-corner finish!'
+      : arcadeState.lastOutcome === 'blocked'
+        ? 'BLOCKED by the Defender Wall!'
+        : arcadeState.lastOutcome === 'saved'
+          ? 'SAVED by the Goalkeeper!'
+          : 'WIDE / OVER THE BAR!';
     $('arcade-result-desc').textContent = isGoal
       ? '+35 XP earned! Ready for the next round?'
-      : arcadeState.superShot
+      : arcadeState.superShot && arcadeState.round % 2 !== 0
         ? 'Your English answer protected you from a Rival counter-goal.'
         : 'Rival FC scored on the counter-attack!';
     $('btn-arcade-next').textContent =
@@ -576,17 +578,41 @@ function drawPitch() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Grass stripes
-  for (let i = 0; i < 8; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? '#15803d' : '#166534';
-    ctx.fillRect(0, i * (PITCH_HEIGHT / 8), PITCH_WIDTH, PITCH_HEIGHT / 8);
+  // Stadium stands & floodlights top strip
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, PITCH_WIDTH, GOAL_LINE_Y);
+  const crowdColors = ['#ef4444', '#facc15', '#38bdf8', '#4ade80', '#f472b6'];
+  for (let row = 0; row < 3; row += 1) {
+    for (let cx = 14; cx < PITCH_WIDTH; cx += 22) {
+      ctx.fillStyle = crowdColors[(cx + row * 7) % crowdColors.length];
+      ctx.beginPath();
+      ctx.arc(cx, 12 + row * 12, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Floodlight glow
+  const glow = ctx.createRadialGradient(PENALTY_X, 0, 20, PENALTY_X, 80, 320);
+  glow.addColorStop(0, 'rgba(254, 240, 138, 0.22)');
+  glow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, PITCH_WIDTH, PITCH_HEIGHT);
+
+  // Grass stripes from goal line down
+  const turfTop = GOAL_LINE_Y;
+  const stripeH = (PITCH_HEIGHT - turfTop) / 6;
+  for (let i = 0; i < 6; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#16a34a' : '#15803d';
+    ctx.fillRect(0, turfTop + i * stripeH, PITCH_WIDTH, stripeH);
   }
 
-  // Penalty box lines
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+  // Penalty box lines & D-arc
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.82)';
   ctx.lineWidth = 3;
-  ctx.strokeRect(80, GOAL_LINE_Y, 480, 220);
-  ctx.strokeRect(200, GOAL_LINE_Y, 240, 86);
+  ctx.strokeRect(80, GOAL_LINE_Y, 480, 224);
+  ctx.strokeRect(200, GOAL_LINE_Y, 240, 88);
+  ctx.beginPath();
+  ctx.arc(PENALTY_X, PENALTY_Y - 12, 48, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
 
   // Penalty spot
   ctx.fillStyle = '#fff';
@@ -594,9 +620,23 @@ function drawPitch() {
   ctx.arc(PENALTY_X, PENALTY_Y, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Goal net & posts
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  // Goal net mesh & posts
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
   ctx.fillRect(GOAL_LEFT, GOAL_TOP, GOAL_RIGHT - GOAL_LEFT, GOAL_LINE_Y - GOAL_TOP);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  for (let nx = GOAL_LEFT + 18; nx < GOAL_RIGHT; nx += 18) {
+    ctx.beginPath();
+    ctx.moveTo(nx, GOAL_TOP);
+    ctx.lineTo(nx, GOAL_LINE_Y);
+    ctx.stroke();
+  }
+  for (let ny = GOAL_TOP + 16; ny < GOAL_LINE_Y; ny += 16) {
+    ctx.beginPath();
+    ctx.moveTo(GOAL_LEFT, ny);
+    ctx.lineTo(GOAL_RIGHT, ny);
+    ctx.stroke();
+  }
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 6;
   ctx.beginPath();
@@ -606,23 +646,48 @@ function drawPitch() {
   ctx.lineTo(GOAL_RIGHT, GOAL_LINE_Y);
   ctx.stroke();
 
-  // Goalkeeper
+  // Goalkeeper (gold/black kit)
   const kx = arcadeState.keeperX;
-  const ky = GOAL_LINE_Y - 12;
+  const ky = GOAL_LINE_Y - 8;
   ctx.fillStyle = '#f59e0b';
-  ctx.fillRect(kx - arcadeState.keeperWidth / 2, ky - 24, arcadeState.keeperWidth, 24);
-  ctx.fillStyle = '#fef08a';
+  ctx.fillRect(kx - arcadeState.keeperWidth / 2, ky - 26, arcadeState.keeperWidth, 24);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(kx - 14, ky - 4, 28, 6);
+  ctx.fillStyle = '#fde68a';
   ctx.beginPath();
-  ctx.arc(kx, ky - 34, 11, 0, Math.PI * 2);
+  ctx.arc(kx, ky - 36, 11, 0, Math.PI * 2);
   ctx.fill();
-  // Gloves
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(kx - arcadeState.keeperWidth / 2 - 4, ky - 14, 7, 0, Math.PI * 2);
-  ctx.arc(kx + arcadeState.keeperWidth / 2 + 4, ky - 14, 7, 0, Math.PI * 2);
+  ctx.arc(kx - arcadeState.keeperWidth / 2 - 4, ky - 16, 7.5, 0, Math.PI * 2);
+  ctx.arc(kx + arcadeState.keeperWidth / 2 + 4, ky - 16, 7.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Aiming reticle during 'aim' phase
+  // Moving Defender Wall (red Rival FC jersey)
+  const dx = arcadeState.defenderX;
+  const dy = arcadeState.defenderY;
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(dx - arcadeState.defenderWidth / 2, dy - 26, arcadeState.defenderWidth, 24);
+  ctx.fillStyle = '#991b1b';
+  ctx.fillRect(dx - 12, dy - 2, 24, 8);
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath();
+  ctx.arc(dx, dy - 35, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('DEF', dx, dy - 10);
+
+  // Striker at penalty spot
+  ctx.fillStyle = '#0284c7';
+  ctx.fillRect(PENALTY_X - 14, PENALTY_Y + 14, 28, 22);
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath();
+  ctx.arc(PENALTY_X, PENALTY_Y + 6, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Aiming reticle + Power Meter during 'aim' phase
   if (arcadeState.phase === 'aim') {
     ctx.strokeStyle = arcadeState.superShot ? '#facc15' : '#f87171';
     ctx.lineWidth = 3;
@@ -635,25 +700,67 @@ function drawPitch() {
     ctx.moveTo(arcadeState.aimX, arcadeState.aimY - 22);
     ctx.lineTo(arcadeState.aimX, arcadeState.aimY + 22);
     ctx.stroke();
+
+    // Power bar on the right side
+    const barX = 576;
+    const barY = 175;
+    const barW = 24;
+    const barH = 150;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(barX - 4, barY - 22, barW + 8, barH + 30);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('PWR', barX + barW / 2, barY - 7);
+
+    // Sweet-spot & Overpower zones
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(barX, barY, barW, barH * 0.14);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(barX, barY + barH * 0.14, barW, barH * 0.51);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(barX, barY + barH * 0.65, barW, barH * 0.35);
+
+    // Current power marker
+    const markerY = barY + (1 - arcadeState.power) * barH;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(barX - 4, markerY - 3, barW + 8, 6);
   }
 
-  // Soccer ball
+  // Ball trail when flying
+  if (arcadeState.phase === 'flying') {
+    ctx.strokeStyle = arcadeState.superShot ? 'rgba(250, 204, 21, 0.55)' : 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(PENALTY_X, PENALTY_Y);
+    ctx.lineTo(arcadeState.ballX, arcadeState.ballY);
+    ctx.stroke();
+  }
+
+  // Spinning Soccer Ball
   const ballScale = arcadeState.phase === 'flying'
     ? Math.max(0.62, 1 - (PENALTY_Y - arcadeState.ballY) / 360)
     : 1;
   const r = 13 * ballScale;
+  ctx.save();
+  ctx.translate(arcadeState.ballX, arcadeState.ballY);
+  ctx.rotate(arcadeState.ballSpin || 0);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(arcadeState.ballX, arcadeState.ballY, r, 0, Math.PI * 2);
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = '#0f172a';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
   // Confetti
   for (const p of confetti) {
     ctx.fillStyle = p.color;
-    ctx.fillRect(p.x, p.y, 7, 7);
+    ctx.fillRect(p.x, p.y, 8, 8);
   }
 }
 

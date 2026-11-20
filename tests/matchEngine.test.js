@@ -162,8 +162,8 @@ test('pitchGame shootout initializes 5 rounds and adjusts keeper speed by questi
 
 test('pitchGame ball scores when aimed away from keeper and advances round', () => {
   let s = applyQuestionOutcome(createShootoutState(5), true);
-  // Place keeper on the far left (x = 180) and aim far right (x = 460, y = 70)
-  s = { ...s, keeperX: 180, keeperWidth: 54 };
+  // Place keeper and defender on the far left and aim far right with sweet-spot power
+  s = { ...s, keeperX: 180, keeperWidth: 66, defenderX: 180, defenderWidth: 44, power: 0.7 };
   s = launchShot(s, 460, 70);
   assert.equal(s.phase, 'flying');
 
@@ -175,4 +175,19 @@ test('pitchGame ball scores when aimed away from keeper and advances round', () 
   assert.equal(s.phase, 'result');
   assert.equal(s.lastOutcome, 'goal');
   assert.equal(s.playerScore, 1);
+});
+
+test('pitchGame defender blocks shots in its path and round difficulty scales keeper speed', () => {
+  const r1 = applyQuestionOutcome(createShootoutState(5), true);
+  const r4 = applyQuestionOutcome({ ...createShootoutState(5), round: 4 }, true);
+  assert.ok(r4.keeperSpeed > r1.keeperSpeed);
+
+  let blocked = { ...r1, keeperX: 180, defenderX: 320, defenderY: 200, defenderWidth: 48, power: 0.7 };
+  blocked = launchShot(blocked, 320, 75);
+  for (let i = 0; i < 60 && blocked.phase === 'flying'; i += 1) {
+    blocked = stepBall(blocked, 0.016);
+  }
+  assert.equal(blocked.phase, 'result');
+  assert.equal(blocked.lastOutcome, 'blocked');
+  assert.equal(blocked.playerScore, 0);
 });
