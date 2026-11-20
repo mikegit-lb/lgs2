@@ -50,9 +50,12 @@
           <div>
             <span class="eyebrow">90-Minute Matchday Plan • 54 Challenges</span>
             <h2>Lead Anatolia United to the LGS Cup!</h2>
-            <p>Start in the Locker Room with Tactical Briefings &amp; Warm-Up Drills (~35 min), then play all 4 Match Quarters (~55 min) to reach 90'.</p>
+            <p>Play the live 2D Penalty Shootout powered by LGS English questions, warm up in the Locker Room, and clear all 4 Match Quarters.</p>
           </div>
-          <button id="btn-reset-progress" class="btn btn-ghost btn-sm" type="button">Reset Season</button>
+          <div class="banner-actions">
+            <button id="btn-play-arcade" class="btn btn-var" type="button">⚽ Play Live 2D Match</button>
+            <button id="btn-reset-progress" class="btn btn-ghost btn-sm" type="button">Reset Season</button>
+          </div>
         </div>
 
         <h3 class="section-title">1. Locker Room: Tactical Briefings &amp; Warm-Up Drills</h3>
@@ -158,6 +161,48 @@
           <div id="builder-feedback" class="feedback-banner hidden">
             <p id="builder-feedback-text"></p>
             <button id="btn-builder-next" class="btn btn-primary btn-sm" type="button">Next Tactic</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIVE 2D PITCH SHOOTOUT GAME -->
+      <section id="view-pitch" class="view hidden" aria-live="polite">
+        <div class="panel pitch-arcade-panel">
+          <div class="arcade-scoreboard">
+            <div class="team-score">
+              <span class="pill pill-pitch">Anatolia United</span>
+              <strong id="arcade-player-score">0</strong>
+            </div>
+            <div class="arcade-round">
+              <span id="arcade-round-label">Round 1 / 5</span>
+              <small id="arcade-status-text">Answer the LGS question to power up your shot!</small>
+            </div>
+            <div class="team-score">
+              <strong id="arcade-rival-score">0</strong>
+              <span class="pill pill-gold">Rival FC</span>
+            </div>
+          </div>
+
+          <div class="canvas-wrap">
+            <canvas id="pitch-canvas" width="640" height="380" aria-label="Interactive 2D football pitch"></canvas>
+            <div id="arcade-controls-hint" class="controls-hint hidden">
+              Move aim with <strong>Mouse / Touch</strong> or <strong>Arrow Keys</strong> • Press <strong>Space / Click Pitch</strong> to SHOOT!
+            </div>
+          </div>
+
+          <!-- Question Overlay Card below/over pitch -->
+          <div id="arcade-question-box" class="arcade-question-box">
+            <pre id="arcade-context" class="context-card hidden"></pre>
+            <h3 id="arcade-prompt" class="quiz-prompt"></h3>
+            <div id="arcade-options" class="options-stack"></div>
+          </div>
+
+          <div id="arcade-result-bar" class="feedback-banner hidden">
+            <div>
+              <strong id="arcade-result-title"></strong>
+              <p id="arcade-result-desc"></p>
+            </div>
+            <button id="btn-arcade-next" class="btn btn-primary" type="button">Next Shot (Enter)</button>
           </div>
         </div>
       </section>

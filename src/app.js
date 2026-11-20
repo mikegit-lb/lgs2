@@ -17,6 +17,23 @@ import {
   loadProgress,
   STORAGE_KEY
 } from './matchEngine.js';
+import {
+  PITCH_WIDTH,
+  PITCH_HEIGHT,
+  GOAL_LEFT,
+  GOAL_RIGHT,
+  GOAL_TOP,
+  GOAL_LINE_Y,
+  PENALTY_X,
+  PENALTY_Y,
+  createShootoutState,
+  applyQuestionOutcome,
+  moveAim,
+  stepKeeper,
+  launchShot,
+  stepBall,
+  advanceShootoutRound
+} from './pitchGame.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,6 +42,7 @@ const views = {
   briefing: $('view-briefing'),
   sorter: $('view-sorter'),
   builder: $('view-builder'),
+  pitch: $('view-pitch'),
   quiz: $('view-quiz'),
   summary: $('view-summary')
 };
@@ -35,6 +53,11 @@ let soundEnabled = true;
 let audioCtx = null;
 let sorterState = { index: 0, score: 0, answered: false };
 let builderState = { index: 0, score: 0, answered: false, pool: [], chosenIndices: [] };
+let arcadeState = createShootoutState(5);
+let arcadeQuestions = [];
+let arcadeRafId = null;
+let arcadeLastTs = 0;
+let confetti = [];
 
 function playSound(kind) {
   if (!soundEnabled) return;
@@ -84,6 +107,10 @@ function playSound(kind) {
 }
 
 function showView(name) {
+  if (name !== 'pitch' && arcadeRafId !== null) {
+    cancelAnimationFrame(arcadeRafId);
+    arcadeRafId = null;
+  }
   activeView = name;
   for (const [key, el] of Object.entries(views)) {
     el.classList.toggle('hidden', key !== name);
@@ -405,6 +432,267 @@ function advanceBuilder() {
   renderBuilder();
 }
 
+function pickArcadeQuestions(count) {
+  const all = MATCH_STAGES.flatMap((s) => s.questions);
+  const copy = [...all];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
+function spawnGoalConfetti() {
+  confetti = Array.from({ length: 36 }, () => ({
+    x: PENALTY_X + (Math.random() - 0.5) * 260,
+    y: GOAL_LINE_Y,
+    vx: (Math.random() - 0.5) * 260,
+    vy: -120 - Math.random() * 180,
+    color: ['#facc15', '#4ade80', '#38bdf8', '#f472b6'][Math.floor(Math.random() * 4)],
+    life: 1.4
+  }));
+}
+
+function startArcadeMatch() {
+  arcadeQuestions = pickArcadeQuestions(5);
+  arcadeState = createShootoutState(5);
+  confetti = [];
+  renderArcadeUI();
+  showView('pitch');
+  arcadeLastTs = performance.now();
+  if (arcadeRafId !== null) cancelAnimationFrame(arcadeRafId);
+  arcadeRafId = requestAnimationFrame(arcadeLoop);
+}
+
+function renderArcadeUI() {
+  $('arcade-player-score').textContent = String(arcadeState.playerScore);
+  $('arcade-rival-score').textContent = String(arcadeState.rivalScore);
+  $('arcade-round-label').textContent = `Round ${arcadeState.round} / ${arcadeState.totalRounds}`;
+
+  const qBox = $('arcade-question-box');
+  const hintBar = $('arcade-controls-hint');
+  const resBar = $('arcade-result-bar');
+
+  if (arcadeState.phase === 'question') {
+    $('arcade-status-text').textContent = 'Answer the LGS question to power up your shot!';
+    qBox.classList.remove('hidden');
+    hintBar.classList.add('hidden');
+    resBar.classList.add('hidden');
+
+    const q = arcadeQuestions[arcadeState.round - 1];
+    const ctxEl = $('arcade-context');
+    if (q.context) {
+      ctxEl.textContent = q.context;
+      ctxEl.classList.remove('hidden');
+    } else {
+      ctxEl.classList.add('hidden');
+    }
+    $('arcade-prompt').textContent = q.prompt;
+
+    const optsEl = $('arcade-options');
+    optsEl.innerHTML = '';
+    q.options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-choice';
+      btn.innerHTML = `<span class="choice-key">${idx + 1}</span><span>${opt}</span>`;
+      btn.addEventListener('click', () => handleArcadeAnswer(idx));
+      optsEl.appendChild(btn);
+    });
+  } else if (arcadeState.phase === 'aim' || arcadeState.phase === 'flying') {
+    $('arcade-status-text').textContent = arcadeState.superShot
+      ? '🔥 SUPER SHOT READY! Aim & Shoot!'
+      : '⚠️ PRESSURE SHOT! Beat the fast keeper!';
+    qBox.classList.add('hidden');
+    hintBar.classList.remove('hidden');
+    resBar.classList.add('hidden');
+  } else if (arcadeState.phase === 'result') {
+    qBox.classList.add('hidden');
+    hintBar.classList.add('hidden');
+    resBar.classList.remove('hidden', 'is-correct', 'is-wrong');
+    const isGoal = arcadeState.lastOutcome === 'goal';
+    resBar.classList.add(isGoal ? 'is-correct' : 'is-wrong');
+    $('arcade-result-title').textContent = isGoal
+      ? 'GOOOAL! What a strike!'
+      : arcadeState.lastOutcome === 'saved'
+        ? 'SAVED by the Goalkeeper!'
+        : 'WIDE! Missed the goal!';
+    $('arcade-result-desc').textContent = isGoal
+      ? '+35 XP earned! Ready for the next round?'
+      : arcadeState.superShot
+        ? 'Your English answer protected you from a Rival counter-goal.'
+        : 'Rival FC scored on the counter-attack!';
+    $('btn-arcade-next').textContent =
+      arcadeState.round >= arcadeState.totalRounds ? 'See Final Score (Enter)' : 'Next Round (Enter)';
+  } else if (arcadeState.phase === 'finished') {
+    qBox.classList.add('hidden');
+    hintBar.classList.add('hidden');
+    resBar.classList.remove('hidden', 'is-correct', 'is-wrong');
+    const won = arcadeState.playerScore > arcadeState.rivalScore;
+    const draw = arcadeState.playerScore === arcadeState.rivalScore;
+    resBar.classList.add(won || draw ? 'is-correct' : 'is-wrong');
+    $('arcade-result-title').textContent = won
+      ? `🏆 FULL TIME: Anatolia United Wins ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
+      : draw
+        ? `🤝 FULL TIME: Draw ${arcadeState.playerScore}-${arcadeState.rivalScore}!`
+        : `⚽ FULL TIME: Rival FC Wins ${arcadeState.rivalScore}-${arcadeState.playerScore}`;
+    $('arcade-result-desc').textContent = 'Play again or return to the Locker Room for more quarters.';
+    $('btn-arcade-next').textContent = 'Play Again';
+  }
+}
+
+function handleArcadeAnswer(idx) {
+  if (arcadeState.phase !== 'question') return;
+  const q = arcadeQuestions[arcadeState.round - 1];
+  const isCorrect = idx === q.correctIndex;
+  if (isCorrect) {
+    state = { ...state, totalXp: state.totalXp + 15 };
+    saveProgress(window.localStorage, state);
+    renderHud();
+    playSound('goal');
+  } else {
+    playSound('foul');
+  }
+  arcadeState = applyQuestionOutcome(arcadeState, isCorrect);
+  renderArcadeUI();
+}
+
+function handleArcadeAdvance() {
+  if (arcadeState.phase === 'finished') {
+    startArcadeMatch();
+    return;
+  }
+  if (arcadeState.phase !== 'result') return;
+  arcadeState = advanceShootoutRound(arcadeState);
+  if (arcadeState.phase === 'finished') {
+    playSound('fulltime');
+  }
+  renderArcadeUI();
+}
+
+function drawPitch() {
+  const canvas = $('pitch-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Grass stripes
+  for (let i = 0; i < 8; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#15803d' : '#166534';
+    ctx.fillRect(0, i * (PITCH_HEIGHT / 8), PITCH_WIDTH, PITCH_HEIGHT / 8);
+  }
+
+  // Penalty box lines
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(80, GOAL_LINE_Y, 480, 220);
+  ctx.strokeRect(200, GOAL_LINE_Y, 240, 86);
+
+  // Penalty spot
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(PENALTY_X, PENALTY_Y, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Goal net & posts
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.fillRect(GOAL_LEFT, GOAL_TOP, GOAL_RIGHT - GOAL_LEFT, GOAL_LINE_Y - GOAL_TOP);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(GOAL_LEFT, GOAL_LINE_Y);
+  ctx.lineTo(GOAL_LEFT, GOAL_TOP);
+  ctx.lineTo(GOAL_RIGHT, GOAL_TOP);
+  ctx.lineTo(GOAL_RIGHT, GOAL_LINE_Y);
+  ctx.stroke();
+
+  // Goalkeeper
+  const kx = arcadeState.keeperX;
+  const ky = GOAL_LINE_Y - 12;
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(kx - arcadeState.keeperWidth / 2, ky - 24, arcadeState.keeperWidth, 24);
+  ctx.fillStyle = '#fef08a';
+  ctx.beginPath();
+  ctx.arc(kx, ky - 34, 11, 0, Math.PI * 2);
+  ctx.fill();
+  // Gloves
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(kx - arcadeState.keeperWidth / 2 - 4, ky - 14, 7, 0, Math.PI * 2);
+  ctx.arc(kx + arcadeState.keeperWidth / 2 + 4, ky - 14, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Aiming reticle during 'aim' phase
+  if (arcadeState.phase === 'aim') {
+    ctx.strokeStyle = arcadeState.superShot ? '#facc15' : '#f87171';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(arcadeState.aimX, arcadeState.aimY, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(arcadeState.aimX - 22, arcadeState.aimY);
+    ctx.lineTo(arcadeState.aimX + 22, arcadeState.aimY);
+    ctx.moveTo(arcadeState.aimX, arcadeState.aimY - 22);
+    ctx.lineTo(arcadeState.aimX, arcadeState.aimY + 22);
+    ctx.stroke();
+  }
+
+  // Soccer ball
+  const ballScale = arcadeState.phase === 'flying'
+    ? Math.max(0.62, 1 - (PENALTY_Y - arcadeState.ballY) / 360)
+    : 1;
+  const r = 13 * ballScale;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(arcadeState.ballX, arcadeState.ballY, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Confetti
+  for (const p of confetti) {
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 7, 7);
+  }
+}
+
+function arcadeLoop(now) {
+  if (activeView !== 'pitch') return;
+  const dt = Math.min(0.05, (now - arcadeLastTs) / 1000);
+  arcadeLastTs = now;
+
+  const prevPhase = arcadeState.phase;
+  arcadeState = stepKeeper(arcadeState, dt);
+  arcadeState = stepBall(arcadeState, dt);
+
+  if (prevPhase === 'flying' && arcadeState.phase === 'result') {
+    if (arcadeState.lastOutcome === 'goal') {
+      state = { ...state, totalXp: state.totalXp + 35 };
+      saveProgress(window.localStorage, state);
+      renderHud();
+      spawnGoalConfetti();
+      playSound('fulltime');
+    } else {
+      playSound('foul');
+    }
+    renderArcadeUI();
+  }
+
+  confetti = confetti
+    .map((p) => ({
+      ...p,
+      x: p.x + p.vx * dt,
+      y: p.y + p.vy * dt,
+      vy: p.vy + 320 * dt,
+      life: p.life - dt
+    }))
+    .filter((p) => p.life > 0);
+
+  drawPitch();
+  arcadeRafId = requestAnimationFrame(arcadeLoop);
+}
+
 function beginStage(stageId) {
   state = startStage(state, stageId);
   renderQuiz();
@@ -570,6 +858,31 @@ $('btn-sound').addEventListener('click', () => {
 });
 
 $('btn-home').addEventListener('click', renderHub);
+$('btn-play-arcade').addEventListener('click', startArcadeMatch);
+$('btn-arcade-next').addEventListener('click', handleArcadeAdvance);
+
+const pitchCanvas = $('pitch-canvas');
+if (pitchCanvas) {
+  const updateAimFromPointer = (clientX, clientY) => {
+    if (arcadeState.phase !== 'aim') return;
+    const rect = pitchCanvas.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * PITCH_WIDTH;
+    const y = ((clientY - rect.top) / rect.height) * PITCH_HEIGHT;
+    arcadeState = {
+      ...arcadeState,
+      aimX: Math.max(GOAL_LEFT - 18, Math.min(GOAL_RIGHT + 18, x)),
+      aimY: Math.max(GOAL_TOP - 8, Math.min(GOAL_LINE_Y - 6, y))
+    };
+  };
+
+  pitchCanvas.addEventListener('pointermove', (e) => updateAimFromPointer(e.clientX, e.clientY));
+  pitchCanvas.addEventListener('pointerdown', (e) => {
+    if (arcadeState.phase !== 'aim') return;
+    updateAimFromPointer(e.clientX, e.clientY);
+    arcadeState = launchShot(arcadeState);
+    renderArcadeUI();
+  });
+}
 $('btn-briefing-back').addEventListener('click', renderHub);
 $('btn-briefing-drill').addEventListener('click', startSorter);
 $('btn-sort-simple').addEventListener('click', () => answerSorter('simple'));
@@ -618,6 +931,23 @@ document.addEventListener('keydown', (event) => {
     else if (sorterState.answered && event.key === 'Enter') {
       event.preventDefault();
       advanceSorter();
+    }
+  } else if (activeView === 'pitch') {
+    if (arcadeState.phase === 'question' && ['1', '2', '3', '4'].includes(event.key)) {
+      handleArcadeAnswer(Number(event.key) - 1);
+    } else if (arcadeState.phase === 'aim') {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); arcadeState = moveAim(arcadeState, -22, 0); }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); arcadeState = moveAim(arcadeState, 22, 0); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); arcadeState = moveAim(arcadeState, 0, -14); }
+      else if (event.key === 'ArrowDown') { event.preventDefault(); arcadeState = moveAim(arcadeState, 0, 14); }
+      else if (event.key === ' ') {
+        event.preventDefault();
+        arcadeState = launchShot(arcadeState);
+        renderArcadeUI();
+      }
+    } else if ((arcadeState.phase === 'result' || arcadeState.phase === 'finished') && event.key === 'Enter') {
+      event.preventDefault();
+      handleArcadeAdvance();
     }
   }
 });

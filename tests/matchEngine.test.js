@@ -18,6 +18,13 @@ import {
   saveProgress,
   loadProgress
 } from '../src/matchEngine.js';
+import {
+  createShootoutState,
+  applyQuestionOutcome,
+  stepKeeper,
+  launchShot,
+  stepBall
+} from '../src/pitchGame.js';
 
 test('matchData has 2 briefings, 12 signals, 8 builders, and 4 stages (34 LGS questions)', () => {
   assert.equal(TACTICAL_BRIEFINGS.length, 2);
@@ -134,4 +141,38 @@ test('getManagerRank and storage helpers handle edge cases safely', () => {
   };
   assert.deepEqual(loadProgress(broken), { totalXp: 0, completedStages: {} });
   assert.equal(saveProgress(broken, createMatchState(MATCH_STAGES)), false);
+});
+
+test('pitchGame shootout initializes 5 rounds and adjusts keeper speed by question outcome', () => {
+  const s0 = createShootoutState(5);
+  assert.equal(s0.round, 1);
+  assert.equal(s0.totalRounds, 5);
+  assert.equal(s0.phase, 'question');
+
+  const boosted = applyQuestionOutcome(s0, true);
+  assert.equal(boosted.phase, 'aim');
+  assert.equal(boosted.superShot, true);
+  assert.ok(boosted.keeperSpeed < s0.keeperSpeed);
+
+  const pressured = applyQuestionOutcome(s0, false);
+  assert.equal(pressured.phase, 'aim');
+  assert.equal(pressured.superShot, false);
+  assert.ok(pressured.keeperSpeed > s0.keeperSpeed);
+});
+
+test('pitchGame ball scores when aimed away from keeper and advances round', () => {
+  let s = applyQuestionOutcome(createShootoutState(5), true);
+  // Place keeper on the far left (x = 180) and aim far right (x = 460, y = 70)
+  s = { ...s, keeperX: 180, keeperWidth: 54 };
+  s = launchShot(s, 460, 70);
+  assert.equal(s.phase, 'flying');
+
+  for (let i = 0; i < 60 && s.phase === 'flying'; i += 1) {
+    s = stepKeeper(s, 0.016);
+    s = stepBall(s, 0.016);
+  }
+
+  assert.equal(s.phase, 'result');
+  assert.equal(s.lastOutcome, 'goal');
+  assert.equal(s.playerScore, 1);
 });
